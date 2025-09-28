@@ -5,7 +5,7 @@ use bitvec::prelude::*;
 use clap::{builder::PossibleValuesParser, Parser, Subcommand};
 use indicatif::HumanBytes;
 use io::LazyFileSeqStream;
-use sbwt::{BitPackedKmerSortingMem, LcsArray, SbwtIndex, SbwtIndexVariant, SubsetMatrix};
+use sbwt::{BitPackedKmerSorting, BitPackedKmerSortingMem, LcsArray, SbwtConstructionAlgorithm, SbwtIndex, SbwtIndexVariant, SeqStream, SubsetMatrix};
 use single_colored_kmers::SingleColoredKmers;
 
 mod single_colored_kmers;
@@ -29,8 +29,8 @@ pub enum Subcommands {
         #[arg(help = "Output filename", short, long, required = true)]
         output: PathBuf,
 
-        //#[arg(help = "Directory for temporary files", short = 'd', long = "temp-dir", required = true)]
-        //temp_dir: PathBuf,
+        #[arg(help = "Directory for temporary files. This enables disk-based construction.", short = 'd', long = "temp-dir")]
+        temp_dir: Option<PathBuf>,
 
         #[arg(short, required = true)]
         k: usize,
@@ -49,19 +49,33 @@ fn main() {
 
     let args = Cli::parse();
     match args.command {
-        Subcommands::Build { input: input_fof, output: out_path, k, n_threads} => {
+        Subcommands::Build { input: input_fof, output: out_path, temp_dir, k, n_threads} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof).unwrap()).lines().map(|f| PathBuf::from(f.unwrap())).collect();
             let mut out = BufWriter::new(File::create(out_path.clone()).unwrap());
 
             let all_input_seqs = io::ChainedInputStream::new(input_paths.clone());
-            let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
-                .add_rev_comp(true)
-                .k(k)
-                .build_lcs(true)
-                .n_threads(n_threads)
-                .precalc_length(8)
-                .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
-            .run(all_input_seqs);
+
+            let (sbwt, lcs) = if let Some(td) = temp_dir {
+                // Use disk-based construction
+                sbwt::SbwtIndexBuilder::new()
+                    .add_rev_comp(true)
+                    .k(k)
+                    .build_lcs(true)
+                    .n_threads(n_threads)
+                    .precalc_length(8)
+                    .algorithm(BitPackedKmerSorting::new().dedup_batches(false).temp_dir(&td))
+                .run(all_input_seqs)
+            } else {
+                // Use in-memory construction
+                sbwt::SbwtIndexBuilder::new()
+                    .add_rev_comp(true)
+                    .k(k)
+                    .build_lcs(true)
+                    .n_threads(n_threads)
+                    .precalc_length(8)
+                    .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
+                .run(all_input_seqs)
+            };
             let lcs = lcs.unwrap(); // Ok because of build_lcs(true)
 
             let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone())).collect();
