@@ -24,6 +24,7 @@ impl SingleColoredKmers {
         self.lcs.serialize(out).unwrap();
 
         // Todo: specify format (is now: usize, should be: little endian 64 bit)
+        // Todo: magic string to check the file format.
         bincode::serialize_into(&mut out, &self.colors).unwrap();
         bincode::serialize_into(&mut out, &self.n_colors).unwrap();
         bincode::serialize_into(&mut out, &self.bits_per_color).unwrap();

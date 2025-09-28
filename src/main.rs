@@ -38,6 +38,18 @@ pub enum Subcommands {
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
     },
+
+    #[command(arg_required_else_help = true)]
+    Lookup {
+        #[arg(help = "A file with one fasta/fastq filename per line", short, long, required = true)]
+        query: PathBuf,
+
+        #[arg(help = "Path to the index file", short, long, required = true)]
+        index: PathBuf,
+
+        //#[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
+        //n_threads: usize,
+    },
 }
 
 
@@ -88,6 +100,10 @@ fn main() {
             let out_size = std::fs::metadata(out_path).unwrap().len() as f64;
             log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
         },
+
+        Subcommands::Lookup{query, index} => {
+            // TODO
+        }
     } 
 }
 
