@@ -30,7 +30,7 @@ impl SingleColoredKmers {
         bincode::serialize_into(&mut out, &self.bits_per_color).unwrap();
     }
 
-    pub fn deserialize(mut input: &mut impl Read) -> SingleColoredKmers {
+    pub fn load(mut input: &mut impl Read) -> SingleColoredKmers {
         let sbwt = SbwtIndex::<sbwt::SubsetMatrix>::load(input).unwrap();
         let lcs = sbwt::LcsArray::load(input).unwrap();
 

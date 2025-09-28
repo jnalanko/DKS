@@ -64,9 +64,11 @@ impl SeqStream for LazyFileSeqStream {
         if self.revcomps_enabled {
             if self.revcomp_next {
                 reverse_complement_in_place(&mut self.seq_buf);
+                self.revcomp_next = !self.revcomp_next;
                 return Some(&self.seq_buf);
+            } else {
+                self.revcomp_next = !self.revcomp_next;
             }
-            self.revcomp_next = !self.revcomp_next;
         }
 
 

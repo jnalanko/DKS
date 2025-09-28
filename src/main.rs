@@ -5,6 +5,7 @@ use bitvec::prelude::*;
 use clap::{builder::PossibleValuesParser, Parser, Subcommand};
 use indicatif::HumanBytes;
 use io::LazyFileSeqStream;
+use jseqio::reader::DynamicFastXReader;
 use sbwt::{BitPackedKmerSorting, BitPackedKmerSortingMem, LcsArray, SbwtConstructionAlgorithm, SbwtIndex, SbwtIndexVariant, SeqStream, SubsetMatrix};
 use single_colored_kmers::SingleColoredKmers;
 
@@ -104,8 +105,13 @@ fn main() {
             log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
         },
 
-        Subcommands::Lookup{query, index} => {
-            // TODO
+        Subcommands::Lookup{query: query_path, index: index_path} => {
+            let mut index_input = BufReader::new(File::open(index_path).unwrap());
+            let index = SingleColoredKmers::load(&mut index_input);
+            let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
+            while let Some(rec) = reader.read_next().unwrap() {
+
+            }
         }
     } 
 }
