@@ -46,6 +46,31 @@ impl SingleColoredKmers {
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le()
     }
 
+    // Returns how many k-mers were found (for now)
+    pub fn lookup_kmers(&self, query: &[u8]) -> usize {
+        let si = StreamingIndex::new(&self.sbwt, &self.lcs);
+        let k = self.sbwt.k();
+        let ms = si.matching_statistics(&query);
+        let colex_iter = ms.iter().enumerate().filter_map(|(i, (len, range))| if 
+            *len == k {
+                debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
+                Some(range.start)
+            } else {
+                if i >= k-1 {
+                    // All valid k-mers should be found. If we're here, the k-mer must have had non-ACGT
+                    // characters which make it invalid. Let's verify that.
+                    let kmer = &query[i-(k-1)..=i];
+                    let all_ACGT = kmer.iter().all(|c| IS_DNA[*c as usize]);
+                    if all_ACGT {
+                        panic!("Error: k-mer {} not found in sbwt", String::from_utf8_lossy(&kmer));
+                    }
+                }
+                None
+            }
+        );
+        colex_iter.count()
+    }
+
     pub fn new<T: SeqStream>(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, input_streams: Vec<T>) -> Self {
         let si = StreamingIndex::new(&sbwt, &lcs);
         let k = sbwt.k();

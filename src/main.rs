@@ -109,9 +109,11 @@ fn main() {
             let mut index_input = BufReader::new(File::open(index_path).unwrap());
             let index = SingleColoredKmers::load(&mut index_input);
             let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
+            let mut n_found = 0;
             while let Some(rec) = reader.read_next().unwrap() {
-
+                n_found += index.lookup_kmers(rec.seq);
             }
+            eprintln!("{n_found} k-mers found");
         }
     } 
 }
