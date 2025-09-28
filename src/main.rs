@@ -122,7 +122,7 @@ fn main() {
 
             for color in 0..index.n_colors() {
                 let hits = color_hit_counts[color];
-                println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64);
+                println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64 * 100.0);
             }
         }
     } 
