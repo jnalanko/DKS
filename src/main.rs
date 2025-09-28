@@ -28,8 +28,8 @@ pub enum Subcommands {
         #[arg(help = "Output filename", short, long, required = true)]
         output: PathBuf,
 
-        #[arg(help = "Directory for temporary files", short = 'd', long = "temp-dir", required = true)]
-        temp_dir: PathBuf,
+        //#[arg(help = "Directory for temporary files", short = 'd', long = "temp-dir", required = true)]
+        //temp_dir: PathBuf,
 
         #[arg(short, required = true)]
         k: usize,
@@ -48,8 +48,9 @@ fn main() {
 
     let args = Cli::parse();
     match args.command {
-        Subcommands::Build { input: input_fof, output: out_path, temp_dir, k, n_threads} => {
+        Subcommands::Build { input: input_fof, output: out_path, k, n_threads} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof).unwrap()).lines().map(|f| PathBuf::from(f.unwrap())).collect();
+            let mut out = BufWriter::new(File::create(out_path).unwrap());
 
             let all_input_seqs = io::ChainedInputStream::new(input_paths.clone());
             let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
@@ -65,7 +66,8 @@ fn main() {
             let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone())).collect();
             let index = SingleColoredKmers::new(sbwt, lcs, individual_streams);
             // TODO: add reverse complements
-            //index.serialize();
+
+            index.serialize(&mut out);
         },
     } 
 }

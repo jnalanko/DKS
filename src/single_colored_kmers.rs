@@ -1,6 +1,9 @@
+use std::io::Write;
+
 use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
 use sbwt::{SeqStream, StreamingIndex};
+use serde::Serialize;
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
 const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
@@ -15,6 +18,15 @@ pub struct SingleColoredKmers {
 }
 
 impl SingleColoredKmers {
+
+    pub fn serialize(&self, mut out: &mut impl Write) {
+        self.sbwt.serialize(out).unwrap();
+        self.lcs.serialize(out).unwrap();
+        bincode::serialize_into(&mut out, &self.colors).unwrap();
+        bincode::serialize_into(&mut out, &self.n_colors).unwrap();
+        bincode::serialize_into(&mut out, &self.bits_per_color).unwrap();
+    }
+    
     pub fn get_color(&self, colex: usize) -> usize {
         assert!(colex < self.sbwt.n_sets());
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le()
