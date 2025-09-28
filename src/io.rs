@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use jseqio::reader::DynamicFastXReader;
+use jseqio::{reader::DynamicFastXReader, reverse_complement_in_place};
 use sbwt::SeqStream;
 
 pub struct ChainedInputStream{
@@ -22,11 +22,13 @@ pub struct LazyFileSeqStream {
     path: PathBuf,
     stream: Option<DynamicFastXReader>,
     seq_buf: Vec<u8>, // Local buffer from which we can borrow (can not use the buffer of cur_file for lifetime reasons)
+    revcomps_enabled: bool,
+    revcomp_next: bool,
 }
 
 impl LazyFileSeqStream {
-    pub fn new(filename: PathBuf) -> Self {
-        Self{path: filename, stream: None, seq_buf: vec![]}
+    pub fn new(filename: PathBuf, revcomps_enabled: bool) -> Self {
+        Self{path: filename, stream: None, seq_buf: vec![], revcomps_enabled, revcomp_next: false}
     }
 }
 
@@ -59,7 +61,14 @@ impl SeqStream for ChainedInputStream {
 impl SeqStream for LazyFileSeqStream {
 
     fn stream_next(&mut self) -> Option<&[u8]> {
-        self.seq_buf.clear();
+        if self.revcomps_enabled {
+            if self.revcomp_next {
+                reverse_complement_in_place(&mut self.seq_buf);
+                return Some(&self.seq_buf);
+            }
+            self.revcomp_next = !self.revcomp_next;
+        }
+
 
         if self.stream.is_none() {
             self.stream = Some(DynamicFastXReader::from_file(&self.path).unwrap());
@@ -67,6 +76,7 @@ impl SeqStream for LazyFileSeqStream {
 
         let s = self.stream.as_mut().unwrap();
         s.read_next().unwrap().map(|r| {
+            self.seq_buf.clear();
             self.seq_buf.extend_from_slice(r.seq);
             self.seq_buf.as_slice()
         })
