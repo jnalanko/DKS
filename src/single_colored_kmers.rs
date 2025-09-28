@@ -56,15 +56,6 @@ impl SingleColoredKmers {
                 debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
                 Some(range.start)
             } else {
-                if i >= k-1 {
-                    // All valid k-mers should be found. If we're here, the k-mer must have had non-ACGT
-                    // characters which make it invalid. Let's verify that.
-                    let kmer = &query[i-(k-1)..=i];
-                    let all_ACGT = kmer.iter().all(|c| IS_DNA[*c as usize]);
-                    if all_ACGT {
-                        panic!("Error: k-mer {} not found in sbwt", String::from_utf8_lossy(&kmer));
-                    }
-                }
                 None
             }
         );
