@@ -40,26 +40,37 @@ impl SingleColoredKmers {
 
         SingleColoredKmers{sbwt, lcs, colors, n_colors, bits_per_color}
     }
+
+    pub fn n_colors(&self) -> usize {
+        self.n_colors
+    }
     
     pub fn get_color(&self, colex: usize) -> usize {
         assert!(colex < self.sbwt.n_sets());
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le()
     }
 
-    // Returns how many k-mers were found (for now)
-    pub fn lookup_kmers(&self, query: &[u8]) -> usize {
-        let si = StreamingIndex::new(&self.sbwt, &self.lcs);
+    // Returns the color of each k-mer in the query (if found). If the
+    // query has length n, the returned Vec has length max(n-k+1, 0)
+    pub fn lookup_kmers(&self, query: &[u8]) -> Vec<Option<usize>> {
         let k = self.sbwt.k();
+        if query.len() < k {
+            return vec![];
+        }
+        let mut answers = Vec::<Option::<usize>>::with_capacity(query.len()-(k-1));
+
+        let si = StreamingIndex::new(&self.sbwt, &self.lcs);
         let ms = si.matching_statistics(&query);
-        let colex_iter = ms.iter().enumerate().filter_map(|(i, (len, range))| if 
-            *len == k {
+        for (i, (len, range)) in ms.iter().enumerate() {
+            if *len == k {
                 debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
-                Some(range.start)
+                let colex = range.start;
+                answers.push(Some(self.get_color(colex)))
             } else {
-                None
+                answers.push(None)
             }
-        );
-        colex_iter.count()
+        }
+        answers
     }
 
     pub fn new<T: SeqStream>(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, input_streams: Vec<T>) -> Self {

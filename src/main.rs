@@ -109,11 +109,21 @@ fn main() {
             let mut index_input = BufReader::new(File::open(index_path).unwrap());
             let index = SingleColoredKmers::load(&mut index_input);
             let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
-            let mut n_found = 0;
+            let mut color_hit_counts = vec![0_usize; index.n_colors()];
+            let mut total_kmers_queried = 0_usize;
             while let Some(rec) = reader.read_next().unwrap() {
-                n_found += index.lookup_kmers(rec.seq);
+                for color in index.lookup_kmers(rec.seq) {
+                    if let Some(color) = color {
+                        color_hit_counts[color] += 1;
+                    }
+                    total_kmers_queried += 1;
+                }
             }
-            eprintln!("{n_found} k-mers found");
+
+            for color in 0..index.n_colors() {
+                let hits = color_hit_counts[color];
+                println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64);
+            }
         }
     } 
 }
