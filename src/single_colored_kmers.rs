@@ -1,8 +1,8 @@
-use std::io::Write;
+use std::io::{Read, Write};
 
 use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
-use sbwt::{SeqStream, StreamingIndex};
+use sbwt::{SbwtIndex, SeqStream, StreamingIndex};
 use serde::Serialize;
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
@@ -22,9 +22,22 @@ impl SingleColoredKmers {
     pub fn serialize(&self, mut out: &mut impl Write) {
         self.sbwt.serialize(out).unwrap();
         self.lcs.serialize(out).unwrap();
+
+        // Todo: specify format (is now: usize, should be: little endian 64 bit)
         bincode::serialize_into(&mut out, &self.colors).unwrap();
         bincode::serialize_into(&mut out, &self.n_colors).unwrap();
         bincode::serialize_into(&mut out, &self.bits_per_color).unwrap();
+    }
+
+    pub fn deserialize(mut input: &mut impl Read) -> SingleColoredKmers {
+        let sbwt = SbwtIndex::<sbwt::SubsetMatrix>::load(input).unwrap();
+        let lcs = sbwt::LcsArray::load(input).unwrap();
+
+        let colors = bincode::deserialize_from(&mut input).unwrap();
+        let n_colors = bincode::deserialize_from(&mut input).unwrap();
+        let bits_per_color = bincode::deserialize_from(&mut input).unwrap();
+
+        SingleColoredKmers{sbwt, lcs, colors, n_colors, bits_per_color}
     }
     
     pub fn get_color(&self, colex: usize) -> usize {
