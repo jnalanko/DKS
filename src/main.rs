@@ -3,6 +3,7 @@
 use std::{fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf, sync::Arc};
 use bitvec::prelude::*;
 use clap::{builder::PossibleValuesParser, Parser, Subcommand};
+use indicatif::HumanBytes;
 use io::LazyFileSeqStream;
 use sbwt::{BitPackedKmerSortingMem, LcsArray, SbwtIndex, SbwtIndexVariant, SubsetMatrix};
 use single_colored_kmers::SingleColoredKmers;
@@ -50,7 +51,7 @@ fn main() {
     match args.command {
         Subcommands::Build { input: input_fof, output: out_path, k, n_threads} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof).unwrap()).lines().map(|f| PathBuf::from(f.unwrap())).collect();
-            let mut out = BufWriter::new(File::create(out_path).unwrap());
+            let mut out = BufWriter::new(File::create(out_path.clone()).unwrap());
 
             let all_input_seqs = io::ChainedInputStream::new(input_paths.clone());
             let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
@@ -64,10 +65,14 @@ fn main() {
             let lcs = lcs.unwrap(); // Ok because of build_lcs(true)
 
             let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone())).collect();
+            log::info!("Marking colors");
             let index = SingleColoredKmers::new(sbwt, lcs, individual_streams);
             // TODO: add reverse complements
 
+            log::info!("Writing to {}", out_path.display());
             index.serialize(&mut out);
+            let out_size = std::fs::metadata(out_path).unwrap().len() as f64;
+            log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
         },
     } 
 }
