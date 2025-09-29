@@ -61,7 +61,7 @@ impl SingleColoredKmers {
 
         let si = StreamingIndex::new(&self.sbwt, &self.lcs);
         let ms = si.matching_statistics(&query);
-        for (i, (len, range)) in ms.iter().enumerate() {
+        for (len, range) in ms.iter().skip(k-1) {
             if *len == k {
                 debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
                 let colex = range.start;
