@@ -1,5 +1,11 @@
 # Disjoint k-mer sets
 
+## Installation
+
+`cargo build -r`
+
+# Usage
+
 ```
 Usage: DKS <COMMAND>
 
