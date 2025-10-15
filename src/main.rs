@@ -97,7 +97,7 @@ fn main() {
 
             let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps)).collect();
             log::info!("Marking colors");
-            let index = SingleColoredKmers::new(sbwt, lcs, individual_streams);
+            let index = SingleColoredKmers::new(sbwt, lcs, individual_streams, n_threads);
 
             log::info!("Writing to {}", out_path.display());
             index.serialize(&mut out);
@@ -126,29 +126,4 @@ fn main() {
             }
         }
     } 
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_reduce_to_classes(){
-        let mut vec = vec![
-            bitvec![1, 1, 1],
-            bitvec![1, 0, 1],
-            bitvec![0, 1, 0],
-            bitvec![1, 0, 1],
-            bitvec![1, 0, 0],
-            bitvec![0, 1, 0],
-            bitvec![0, 1, 0],
-            bitvec![1, 0, 1]];
-        let counts = reduce_to_classes(&mut vec);
-        assert_eq!(vec, vec![
-            bitvec![0, 1, 0],
-            bitvec![1, 0, 0],
-            bitvec![1, 0, 1],
-            bitvec![1, 1, 1]]);
-        assert_eq!(counts, vec![3, 1, 3, 1]);
-    }
 }
