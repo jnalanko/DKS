@@ -106,11 +106,16 @@ fn main() {
         },
 
         Subcommands::Lookup{query: query_path, index: index_path} => {
+            eprintln!("Loading the index");
             let mut index_input = BufReader::new(File::open(index_path).unwrap());
+
+            let index_loading_start = std::time::Instant::now();
             let index = SingleColoredKmers::load(&mut index_input);
+            eprintln!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
             let mut color_hit_counts = vec![0_usize; index.n_colors()];
             let mut total_kmers_queried = 0_usize;
+            let query_start = std::time::Instant::now();
             while let Some(rec) = reader.read_next().unwrap() {
                 for color in index.lookup_kmers(rec.seq) {
                     if let Some(color) = color {
@@ -120,10 +125,15 @@ fn main() {
                 }
             }
 
+            let query_duration = query_start.elapsed();
             for color in 0..index.n_colors() {
                 let hits = color_hit_counts[color];
                 println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64 * 100.0);
             }
+            
+            eprintln!("{} k-mers queried in {} seconds (excluding index loading time)", total_kmers_queried, query_duration.as_secs());
+            eprintln!("{:.2}% of query k-mers found", color_hit_counts.iter().sum::<usize>() as f64 / total_kmers_queried as f64 * 100.0);
+            eprintln!("Query time per k-mer: {} nanoseconds", query_duration.as_nanos() as f64 / total_kmers_queried as f64);
         }
     } 
 }
