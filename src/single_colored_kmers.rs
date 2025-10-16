@@ -62,9 +62,9 @@ impl SingleColoredKmers {
         let mut answers = Vec::<Option::<usize>>::with_capacity(query.len()-(k-1));
 
         let si = StreamingIndex::new(&self.sbwt, &self.lcs);
-        let ms = si.matching_statistics(&query);
-        for (len, range) in ms.iter().skip(k-1) {
-            if *len == k {
+        let ms = si.matching_statistics_iter(query);
+        for (len, range) in ms.skip(k-1) {
+            if len == k {
                 debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
                 let colex = range.start;
                 answers.push(Some(self.get_color(colex)))
@@ -75,7 +75,7 @@ impl SingleColoredKmers {
         answers
     }
 
-    fn write_ints(bv: &mut BitVec::<usize, Lsb0>, indices: &Vec<usize>, value: usize, bit_width: usize) {
+    fn write_ints(bv: &mut BitVec::<usize, Lsb0>, indices: &[usize], value: usize, bit_width: usize) {
         for &i in indices.iter() {
             bv[i*bit_width..(i+1)*bit_width].store_le(value);
         }
