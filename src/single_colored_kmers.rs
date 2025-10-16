@@ -127,11 +127,8 @@ impl SingleColoredKmers {
                     }
                 }
 
-                // Remaining writes in the buffer
-                if store_buffer.len() >= store_buffer_cap {
-                    Self::write_ints(&mut color_ids.lock().unwrap(), &store_buffer, color, bits_per_color);
-                    store_buffer.clear();
-                }
+                // Flush the remaining writes in the buffer
+                Self::write_ints(&mut color_ids.lock().unwrap(), &store_buffer, color, bits_per_color);
             })
         });
 
