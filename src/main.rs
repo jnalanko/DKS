@@ -106,12 +106,13 @@ fn main() {
         },
 
         Subcommands::Lookup{query: query_path, index: index_path} => {
-            eprintln!("Loading the index");
+            eprintln!("Loading the index ...");
             let mut index_input = BufReader::new(File::open(index_path).unwrap());
 
             let index_loading_start = std::time::Instant::now();
             let index = SingleColoredKmers::load(&mut index_input);
             eprintln!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
+            eprintln!("Running queries from {} ...", query_path.display());
             let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
             let mut color_hit_counts = vec![0_usize; index.n_colors()];
             let mut total_kmers_queried = 0_usize;
