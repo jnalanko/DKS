@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
-use sbwt::{SbwtIndex, SeqStream, StreamingIndex};
+use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use rayon::prelude::*;
 use simple_sds_sbwt::bits;
 
@@ -17,6 +17,28 @@ pub struct SingleColoredKmers {
     colors: BitVec::<usize, Lsb0>,
     n_colors: usize,
     bits_per_color: usize,
+}
+
+pub struct KmerLookupIterator<'a, 'b> {
+    // This iterator should be initialized so that the first k-1 MS values are skipped
+    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, LcsArray>,
+    index: &'a SingleColoredKmers,
+}
+
+impl<'a, 'b, 'c> Iterator for KmerLookupIterator<'a, 'b> {
+    type Item = Option<usize>; // Color id of k-mer, if exists
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (len, range) = self.matching_stats_iter.next()?;
+
+        if len == self.index.sbwt.k() {
+            debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
+            let colex = range.start;
+            Some(Some(self.index.get_color(colex)))
+        } else {
+            Some(None) // Iterator not finished but the k-mer is not found
+        }
+    }
 }
 
 impl SingleColoredKmers {
@@ -54,25 +76,18 @@ impl SingleColoredKmers {
 
     // Returns the color of each k-mer in the query (if found). If the
     // query has length n, the returned Vec has length max(n-k+1, 0)
-    pub fn lookup_kmers(&self, query: &[u8]) -> Vec<Option<usize>> {
+    pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8]) -> KmerLookupIterator<'a, 'b>{
         let k = self.sbwt.k();
-        if query.len() < k {
-            return vec![];
-        }
-        let mut answers = Vec::<Option::<usize>>::with_capacity(query.len()-(k-1));
-
         let si = StreamingIndex::new(&self.sbwt, &self.lcs);
-        let ms = si.matching_statistics_iter(query);
-        for (len, range) in ms.skip(k-1) {
-            if len == k {
-                debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
-                let colex = range.start;
-                answers.push(Some(self.get_color(colex)))
-            } else {
-                answers.push(None)
-            }
+
+        let mut ms_iter = si.matching_statistics_iter(query);
+
+        // Skip over the first k-1 positions
+        for _ in 0..k-1 {
+            ms_iter.next(); // If the iterator ends early, will keep returning None
         }
-        answers
+        KmerLookupIterator { matching_stats_iter: ms_iter, index: self }
+
     }
 
     fn write_ints(bv: &mut BitVec::<usize, Lsb0>, indices: &[usize], value: usize, bit_width: usize) {
