@@ -74,8 +74,8 @@ impl SingleColoredKmers {
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le()
     }
 
-    // Returns the color of each k-mer in the query (if found). If the
-    // query has length n, the returned Vec has length max(n-k+1, 0)
+    // Returns an iterator giving the color of each of the n-k+1 k-mers of the query.
+    // If query is shorter than k, returns an empty.
     pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8]) -> KmerLookupIterator<'a, 'b>{
         let k = self.sbwt.k();
         let si = StreamingIndex::new(&self.sbwt, &self.lcs);
