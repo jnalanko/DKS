@@ -25,7 +25,7 @@ pub struct KmerLookupIterator<'a, 'b> {
     index: &'a SingleColoredKmers,
 }
 
-impl<'a, 'b, 'c> Iterator for KmerLookupIterator<'a, 'b> {
+impl Iterator for KmerLookupIterator<'_, '_> {
     type Item = Option<usize>; // Color id of k-mer, if exists
 
     fn next(&mut self) -> Option<Self::Item> {
