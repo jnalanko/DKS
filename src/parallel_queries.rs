@@ -67,7 +67,7 @@ impl ProcessedQueryBatch {
 
 impl PartialEq for ProcessedQueryBatch{
     fn eq(&self, other: &Self) -> bool {
-        self.seq_id_range == other.seq_id_range && self.start_kmer_offset == other.start_kmer_offset
+        self.batch_id == other.batch_id
     }
 }
 impl Eq for ProcessedQueryBatch {}
@@ -80,8 +80,7 @@ impl PartialOrd for ProcessedQueryBatch {
 
 impl Ord for ProcessedQueryBatch {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // Primary key: seq id range start, secondary key: kmer start
-        (self.seq_id_range.start, self.start_kmer_offset).cmp(&(other.seq_id_range.start, other.start_kmer_offset))
+        self.batch_id.cmp(&other.batch_id)
     }
 }
 
@@ -91,11 +90,9 @@ fn kmers_in_n(k: usize, n: usize) -> usize {
 
 // Returns the total number of k-mers in all the received batches
 fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch>, out: &mut W) -> usize {
-    let mut cur_seq_id = 0_usize;
-    let mut cur_kmer_offset = 0_usize; 
-
     let mut batch_buffer = std::collections::BinaryHeap::<Reverse<ProcessedQueryBatch>>::new(); // Reverse makes it a min heap
     let mut n_kmers_processed = 0_usize;
+    let mut next_batch_id = 0_usize;
 
     while let Ok(batch) = query_results.recv() {
         batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
@@ -104,19 +101,11 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             let min_batch = batch_buffer.peek();
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
-                if min_batch.seq_id_range.start == cur_seq_id && min_batch.start_kmer_offset == cur_kmer_offset {
+                if min_batch.batch_id == next_batch_id {
                     min_batch.write(out);
-
                     n_kmers_processed += min_batch.result.len();
-
-                    cur_seq_id = min_batch.seq_id_range.end; // Next batch to print starts from here
-                    cur_kmer_offset = if let Some(len) = min_batch.kmer_counts_in_seq_range.last() {
-                        // Next batch to print starts from here (wrap around to start of next seq if this seq is fully processed)
-                        min_batch.end_kmer_offset % len 
-                    } else {
-                        0 // There were no sequences in the batch
-                    };
                     batch_buffer.pop();
+                    next_batch_id += 1;
                 } else {
                     break; // Not ready to print min_batch yet
                 }

@@ -112,7 +112,7 @@ fn main() {
             let index = SingleColoredKmers::load(&mut index_input);
             eprintln!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             eprintln!("Running queries from {} ...", query_path.display());
-            parallel_queries::lookup_parallel(n_threads, &query_path, index);
+            parallel_queries::lookup_parallel(n_threads, &query_path, index, 51);
 
         }
     } 
