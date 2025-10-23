@@ -1,6 +1,6 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{cmp::{max, Reverse}, fs::File, io::{BufRead, BufReader, BufWriter}, ops::Range, path::{Path, PathBuf}, sync::Arc, thread::ScopedJoinHandle};
+use std::{cmp::{max, Reverse}, fs::File, io::{BufRead, BufReader, BufWriter, Write}, ops::Range, path::{Path, PathBuf}, sync::Arc, thread::ScopedJoinHandle};
 use bitvec::prelude::*;
 use clap::{builder::PossibleValuesParser, Parser, Subcommand};
 use indicatif::HumanBytes;
@@ -60,16 +60,30 @@ struct QueryBatch {
     seqs: SeqDB,
 
     // The sequences in `seqs` are subsequence of some longer sequences S_1, ... S_n.
-    // The first k-mer in the first sequence in `seqs` starts at `start_kmer_offset` in S_{seq_id_range.start}
     seq_id_range: Range<usize>,
-    start_kmer_offset: usize,
-    end_kmer_offset: usize, // One past the starting point of the last k-mer, or zero if it is the last k-mer of the sequence
 
-    result: Vec<Option<usize>>, // Color ids of the query k-mers
+    // The values max(0, |S_i|-k+1) for i in seq_id_range. This is needed to write the output correctly.
+    kmer_counts_in_seq_range: Vec<usize>,
+
+    // The first k-mer in the first sequence in `seqs` starts at `start_kmer_offset` in S_{seq_id_range.start}
+    start_kmer_offset: usize,
+
+    // One past the starting point of the last k-mer in the last sequence
+    end_kmer_offset: usize, 
+}
+
+struct ProcessedQueryBatch {
+    result: Vec<Option<usize>>,
+
+    // See comments in QueryBatch
+    seq_id_range: Range<usize>,
+    kmer_counts_in_seq_range: Vec<usize>,
+    start_kmer_offset: usize,
+    end_kmer_offset: usize, 
 }
 
 impl QueryBatch {
-    fn run(&mut self, index: &SingleColoredKmers) {
+    fn run(self, index: &SingleColoredKmers) -> ProcessedQueryBatch {
         let k = index.k();
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
             acc + kmers_in_n(k, rec.seq.len()) 
@@ -88,25 +102,36 @@ impl QueryBatch {
         }
 
         assert_eq!(color_ids.len(), total_query_kmers);
-        self.result = color_ids;
+        ProcessedQueryBatch{
+            seq_id_range: self.seq_id_range,
+            start_kmer_offset: self.start_kmer_offset,
+            end_kmer_offset: self.end_kmer_offset,
+            kmer_counts_in_seq_range: self.kmer_counts_in_seq_range,
+            result: color_ids,
+        }
+    }
+}
+
+impl ProcessedQueryBatch {
+    fn write<W: Write>(&self, out: &mut W) {
 
     }
 }
 
-impl PartialEq for QueryBatch {
+impl PartialEq for ProcessedQueryBatch{
     fn eq(&self, other: &Self) -> bool {
         self.seq_id_range == other.seq_id_range && self.start_kmer_offset == other.start_kmer_offset
     }
 }
-impl Eq for QueryBatch {}
+impl Eq for ProcessedQueryBatch {}
 
-impl PartialOrd for QueryBatch {
+impl PartialOrd for ProcessedQueryBatch {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other)) // Using the total order
     }
 }
 
-impl Ord for QueryBatch {
+impl Ord for ProcessedQueryBatch {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // Primary key: seq id range start, secondary key: kmer start
         (self.seq_id_range.start, self.start_kmer_offset).cmp(&(other.seq_id_range.start, other.start_kmer_offset))
@@ -118,11 +143,11 @@ fn kmers_in_n(k: usize, n: usize) -> usize {
 }
 
 // Returns the total number of k-mers in all the received batches
-fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) -> usize {
+fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch>, out: &mut W) -> usize {
     let mut cur_seq_id = 0_usize;
     let mut cur_kmer_offset = 0_usize; 
 
-    let mut batch_buffer = std::collections::BinaryHeap::<Reverse<QueryBatch>>::new(); // Reverse makes it a min heap
+    let mut batch_buffer = std::collections::BinaryHeap::<Reverse<ProcessedQueryBatch>>::new(); // Reverse makes it a min heap
     let mut n_kmers_processed = 0_usize;
 
     while let Ok(batch) = query_results.recv() {
@@ -133,14 +158,17 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) -> usi
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
                 if min_batch.seq_id_range.start == cur_seq_id && min_batch.start_kmer_offset == cur_kmer_offset {
-                    for x in min_batch.result.iter() {
-                        //print!("{:?} ", x); // TODO: better printing
-                    }
-                    //println!();
+                    min_batch.write(out);
+
                     n_kmers_processed += min_batch.result.len();
 
                     cur_seq_id = min_batch.seq_id_range.end; // Next batch to print starts from here
-                    cur_kmer_offset = min_batch.end_kmer_offset; // Next batch to print starts from here
+                    cur_kmer_offset = if let Some(len) = min_batch.kmer_counts_in_seq_range.last() {
+                        // Next batch to print starts from here (wrap around to start of next seq if this seq is fully processed)
+                        min_batch.end_kmer_offset % len 
+                    } else {
+                        0 // There were no sequences in the batch
+                    };
                     batch_buffer.pop();
                 } else {
                     break; // Not ready to print min_batch yet
@@ -157,10 +185,11 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) -> usi
 
 fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmers) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
-    let (output_send, output_recv) = crossbeam::channel::bounded::<QueryBatch>(2);
+    let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
     let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
     let query_start = std::time::Instant::now();
+    let k = index.k();
 
     let n_kmers_processed = std::thread::scope(|s| {
         let reader_handle = s.spawn(|| {
@@ -173,12 +202,14 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
                 let mut seqs = SeqDB::new();
                 seqs.push_seq(rec.seq);
 
+                let kmer_counts = seqs.iter().map(|rec| kmers_in_n(k, rec.seq.len())).collect();
+
                 let batch = QueryBatch{
                     seqs,
                     seq_id_range: seq_id..seq_id+1,
                     start_kmer_offset: 0,
-                    end_kmer_offset: 0, // seq_len + 1 wrapped to zero
-                    result: Vec::new(),
+                    end_kmer_offset: kmers_in_n(k, rec.seq.len()),
+                    kmer_counts_in_seq_range: kmer_counts
                 };
 
                 batch_send.send(batch).unwrap();
@@ -191,7 +222,8 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
         });
 
         let writer_handle = s.spawn(|| {
-            output_thread(output_recv) // Returns number of k-mers processed
+            let mut stdout = std::io::stdout();
+            output_thread(output_recv, &mut stdout) // Returns number of k-mers processed
         });
 
         let mut worker_handles = Vec::new();
@@ -200,9 +232,9 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
             let batch_recv_clone = batch_recv.clone(); // Moved into worker
             let index_ref = &index; // Moved into worker
             worker_handles.push(s.spawn(move || {
-                while let Ok(mut batch) = batch_recv_clone.recv() {
-                    batch.run(index_ref);
-                    output_send_clone.send(batch).unwrap();
+                while let Ok(batch) = batch_recv_clone.recv() {
+                   let processed_batch = batch.run(index_ref);
+                   output_send_clone.send(processed_batch).unwrap();
                 }
                 eprintln!("Worker done");
             }));
