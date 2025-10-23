@@ -134,9 +134,9 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) -> usi
                 let min_batch = &min_batch.0; // Unwrap from Reverse
                 if min_batch.seq_id_range.start == cur_seq_id && min_batch.start_kmer_offset == cur_kmer_offset {
                     for x in min_batch.result.iter() {
-                        print!("{:?} ", x); // TODO: better printing
+                        //print!("{:?} ", x); // TODO: better printing
                     }
-                    println!();
+                    //println!();
                     n_kmers_processed += min_batch.result.len();
 
                     cur_seq_id = min_batch.seq_id_range.end; // Next batch to print starts from here
@@ -186,6 +186,7 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
                 seq_id += 1;
             }
 
+            eprintln!("All input read");
             drop(batch_send); // Close the channel
         });
 
@@ -195,18 +196,22 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
 
         let mut worker_handles = Vec::new();
         for _ in 0..n_threads {
-            worker_handles.push(s.spawn(|| {
-                while let Ok(mut batch) = batch_recv.recv() {
-                    //println!("Processing batch");
-                    batch.run(&index);
-                    output_send.send(batch).unwrap();
+            let output_send_clone = output_send.clone(); // Moved into worker
+            let batch_recv_clone = batch_recv.clone(); // Moved into worker
+            let index_ref = &index; // Moved into worker
+            worker_handles.push(s.spawn(move || {
+                while let Ok(mut batch) = batch_recv_clone.recv() {
+                    batch.run(index_ref);
+                    output_send_clone.send(batch).unwrap();
                 }
+                eprintln!("Worker done");
             }));
         }
 
         // Wait for threads to finish
         reader_handle.join().unwrap(); // All work batches pushed to workers
         worker_handles.into_iter().for_each(|w| w.join().unwrap()); // All batches processed
+        drop(output_send); // All output written to channel -> can close the channel
         let n_kmers_processed = writer_handle.join().unwrap(); // All output written out
 
         #[allow(clippy::let_and_return)] // Is clearer to give it a name
