@@ -63,16 +63,28 @@ impl QueryBatch {
 
 impl ProcessedQueryBatch {
     fn write<W: Write>(&self, out: &mut W) {
-        for (i, n) in self.result.iter().enumerate() {
-            if i > 0 {
+        let mut kmer_start = self.start_kmer_offset;
+        let mut batch_seq_id = 0;
+        for color in self.result.iter() {
+            if kmer_start > 0 {
+                // Not the first k-mer
                 out.write_all(b" ").unwrap();
             }
-            match n {
-                Some(v) => write!(out, "{v}").unwrap(),
-                None => out.write_all(b"X").unwrap(),
+
+            // Write the color id, or "X" if None
+            match color {
+                Some(color) => write!(out, "{color}").unwrap(),
+                None => write!(out, "X").unwrap(),
+            };
+
+            // End the line if needed
+            if self.kmer_counts_in_seq_range[batch_seq_id] == kmer_start + 1 {
+                // Was the last k-mer of this sequence
+                out.write_all(b"\n").unwrap();
+                kmer_start = 0;
+                batch_seq_id += 1;
             }
         }
-        out.write_all(b"\n").unwrap();
     }
 }
 
@@ -141,7 +153,8 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
     // Channel is dropped (= closed) here.
 }
 
-pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmers) {
+// Batch size is in nucleotides (= bytes)
+pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmers, batch_size: usize) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
@@ -154,23 +167,33 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
             // Reader thread that pushes batches for workers
 
             let mut seq_id = 0_usize;
+            let mut seq_batch = SeqDB::new();
+            let mut chars_in_seqs = 0_usize;
+            let mut seq_id_at_start_of_batch = 0_usize; // TODO: remember to update
             while let Some(rec) = reader.read_next().unwrap() {
-                // Todo: break long sequences into multiple batches and combine short sequences
+                if chars_in_seqs + rec.seq.len() >= batch_size {
+                    let head = batch_size - chars_in_seqs;
+                    seq_batch.push_seq(&rec.seq[..head]);
 
-                let mut seqs = SeqDB::new();
-                seqs.push_seq(rec.seq);
+                    let kmer_counts = seq_batch.iter().map(|rec| kmers_in_n(k, rec.seq.len())).collect();
 
-                let kmer_counts = seqs.iter().map(|rec| kmers_in_n(k, rec.seq.len())).collect();
+                    let batch = QueryBatch{
+                        seqs: seq_batch,
+                        seq_id_range: seq_id_at_start_of_batch..seq_id+1,
+                        start_kmer_offset: 0,
+                        end_kmer_offset: kmers_in_n(k, rec.seq.len()),
+                        kmer_counts_in_seq_range: kmer_counts
+                    };
 
-                let batch = QueryBatch{
-                    seqs,
-                    seq_id_range: seq_id..seq_id+1,
-                    start_kmer_offset: 0,
-                    end_kmer_offset: kmers_in_n(k, rec.seq.len()),
-                    kmer_counts_in_seq_range: kmer_counts
-                };
+                    batch_send.send(batch).unwrap();
+                    seq_batch = SeqDB::new();
+                    chars_in_seqs = 0;
+                    seq_id_at_start_of_batch...
+                } else {
+                    seq_batch.push_seq(rec.seq);
+                }
 
-                batch_send.send(batch).unwrap();
+
 
                 seq_id += 1;
             }
