@@ -131,7 +131,6 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
             let min_batch = batch_buffer.peek();
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
-                eprintln!("{} {}", min_batch.seq_id_range.start, min_batch.start_kmer_offset);
                 if min_batch.seq_id_range.start == cur_seq_id && min_batch.start_kmer_offset == cur_kmer_offset {
                     for x in min_batch.result.iter() {
                         print!("{:?} ", x); // TODO: better printing
