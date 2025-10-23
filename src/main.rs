@@ -1,6 +1,6 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{cmp::max, fs::File, io::{BufRead, BufReader, BufWriter}, ops::Range, path::PathBuf, sync::Arc};
+use std::{cmp::{max, Reverse}, fs::File, io::{BufRead, BufReader, BufWriter}, ops::Range, path::PathBuf, sync::Arc};
 use bitvec::prelude::*;
 use clap::{builder::PossibleValuesParser, Parser, Subcommand};
 use indicatif::HumanBytes;
@@ -69,26 +69,74 @@ struct QueryBatch {
     result: Vec<Option<usize>>, // Color ids of the query k-mers
 }
 
-fn lookup_job(index: SingleColoredKmers, mut queries: QueryBatch) {
-    let k = index.k() as isize;
-    let total_query_kmers = queries.seqs.iter().fold(0_isize, |acc, rec| 
-        acc + max(rec.seq.len() as isize - k + 1, 0)
-    );
-    let mut color_ids = Vec::<Option::<usize>>::with_capacity(total_query_kmers as usize);
+impl QueryBatch {
+    fn run(&mut self, index: SingleColoredKmers) {
+        let k = index.k() as isize;
+        let total_query_kmers = self.seqs.iter().fold(0_isize, |acc, rec| 
+            acc + max(rec.seq.len() as isize - k + 1, 0)
+        );
+        let mut color_ids = Vec::<Option::<usize>>::with_capacity(total_query_kmers as usize);
 
-    for rec in queries.seqs.iter() {
-        for color in index.lookup_kmers(rec.seq) {
-            if let Some(color) = color {
-                color_ids.push(Some(color));
-            } else {
-                color_ids.push(None);
+        for rec in self.seqs.iter() {
+            for color in index.lookup_kmers(rec.seq) {
+                if let Some(color) = color {
+                    color_ids.push(Some(color));
+                } else {
+                    color_ids.push(None);
+                }
+            }
+        }
+
+        assert_eq!(color_ids.len(), total_query_kmers as usize);
+        self.result = color_ids;
+
+    }
+}
+
+impl PartialEq for QueryBatch {
+    fn eq(&self, other: &Self) -> bool {
+        self.seq_id_range == other.seq_id_range && self.start_kmer_offset == other.start_kmer_offset
+    }
+}
+impl Eq for QueryBatch {}
+
+impl PartialOrd for QueryBatch {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other)) // Using the total order
+    }
+}
+
+impl Ord for QueryBatch {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // Primary key: seq id range start, secondary key: kmer start
+        (self.seq_id_range.start, self.start_kmer_offset).cmp(&(other.seq_id_range.start, other.start_kmer_offset))
+    }
+}
+
+fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
+    let cur_seq_id = 0_usize;
+    let cur_kmer_offset = 0_usize; 
+
+    let mut batch_buffer = std::collections::BinaryHeap::<Reverse<QueryBatch>>::new(); // Reverse makes it a min heap
+
+    while let Ok(batch) = query_results.recv() {
+        batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
+
+        loop {
+            let min_batch = batch_buffer.peek();
+            if let Some(min_batch) = min_batch {
+                let min_batch = &min_batch.0; // Unwrap from Reverse
+                if min_batch.seq_id_range.start == cur_seq_id && min_batch.start_kmer_offset == cur_kmer_offset {
+                    // <printing code here TODO>
+                    todo!();
+
+                    batch_buffer.pop();
+                } else {
+                    break; // Not ready to print min_batch yet
+                }
             }
         }
     }
-
-    assert_eq!(color_ids.len(), total_query_kmers as usize);
-    queries.result = color_ids;
-
 }
 
 fn main() {
