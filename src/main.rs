@@ -63,7 +63,7 @@ struct QueryBatch {
     // The first k-mer in the first sequence in `seqs` starts at `start_kmer_offset` in S_{seq_id_range.start}
     seq_id_range: Range<usize>,
     start_kmer_offset: usize,
-    end_kmer_offset: usize, // One past the starting point of the last k-mer
+    end_kmer_offset: usize, // One past the starting point of the last k-mer, or zero if it is the last k-mer of the sequence
 
     result: Vec<Option<usize>>, // Color ids of the query k-mers
 }
@@ -74,9 +74,10 @@ impl QueryBatch {
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
             acc + kmers_in_n(k, rec.seq.len()) 
         );
-        let mut color_ids = Vec::<Option::<usize>>::with_capacity(total_query_kmers as usize);
+        let mut color_ids = Vec::<Option::<usize>>::with_capacity(total_query_kmers);
 
         for rec in self.seqs.iter() {
+            //eprintln!("{:?}", index.lookup_kmers(rec.seq).collect::<Vec::<Option::<usize>>>());
             for color in index.lookup_kmers(rec.seq) {
                 if let Some(color) = color {
                     color_ids.push(Some(color));
@@ -86,7 +87,7 @@ impl QueryBatch {
             }
         }
 
-        assert_eq!(color_ids.len(), total_query_kmers as usize);
+        assert_eq!(color_ids.len(), total_query_kmers);
         self.result = color_ids;
 
     }
@@ -117,26 +118,35 @@ fn kmers_in_n(k: usize, n: usize) -> usize {
 }
 
 fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
-    let cur_seq_id = 0_usize;
-    let cur_kmer_offset = 0_usize; 
+    let mut cur_seq_id = 0_usize;
+    let mut cur_kmer_offset = 0_usize; 
 
     let mut batch_buffer = std::collections::BinaryHeap::<Reverse<QueryBatch>>::new(); // Reverse makes it a min heap
+    let mut n_batches_printed = 0_usize;
 
     while let Ok(batch) = query_results.recv() {
         batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
 
-        loop {
+        loop { // Print all batches that can now be printed
             let min_batch = batch_buffer.peek();
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
+                eprintln!("{} {}", min_batch.seq_id_range.start, min_batch.start_kmer_offset);
                 if min_batch.seq_id_range.start == cur_seq_id && min_batch.start_kmer_offset == cur_kmer_offset {
                     for x in min_batch.result.iter() {
-                        println!("{:?}", x); // TODO: better printing
+                        print!("{:?} ", x); // TODO: better printing
                     }
+                    println!();
+
+                    cur_seq_id = min_batch.seq_id_range.end; // Next batch to print starts from here
+                    cur_kmer_offset = min_batch.end_kmer_offset; // Next batch to print starts from here
                     batch_buffer.pop();
+                    n_batches_printed += 1;
                 } else {
                     break; // Not ready to print min_batch yet
                 }
+            } else {
+                break; // Batch buffer is empty 
             }
         }
     }
@@ -166,7 +176,7 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
                     seqs,
                     seq_id_range: seq_id..seq_id+1,
                     start_kmer_offset: 0,
-                    end_kmer_offset: kmers_in_n(index.k(), rec.seq.len()),
+                    end_kmer_offset: 0, // seq_len + 1 wrapped to zero
                     result: Vec::new(),
                 };
 
@@ -186,7 +196,7 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
         for _ in 0..n_threads {
             worker_handles.push(s.spawn(|| {
                 while let Ok(mut batch) = batch_recv.recv() {
-                    println!("Processing batch");
+                    //println!("Processing batch");
                     batch.run(&index);
                     output_send.send(batch).unwrap();
                 }
