@@ -140,6 +140,8 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
             }
         }
     }
+
+    // Channel is dropped (= closed) here.
 }
 
 fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmers) {
@@ -176,10 +178,15 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
             drop(batch_send); // Close the channel
         });
 
+        let writer_handle = s.spawn(|| {
+            output_thread(output_recv);
+        });
+
         let mut worker_handles = Vec::new();
         for _ in 0..n_threads {
             worker_handles.push(s.spawn(|| {
                 while let Ok(mut batch) = batch_recv.recv() {
+                    println!("Processing batch");
                     batch.run(&index);
                     output_send.send(batch).unwrap();
                 }
@@ -189,6 +196,7 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
         // Wait for threads to finish
         reader_handle.join().unwrap(); // All work batches pushed to workers
         worker_handles.into_iter().for_each(|w| w.join().unwrap()); // All batches processed
+        writer_handle.join().unwrap(); // All output written out
     });
 
     let query_duration = query_start.elapsed();
