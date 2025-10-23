@@ -117,12 +117,13 @@ fn kmers_in_n(k: usize, n: usize) -> usize {
     max(0, n as isize - k as isize + 1) as usize
 }
 
-fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
+// Returns the total number of k-mers in all the received batches
+fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) -> usize {
     let mut cur_seq_id = 0_usize;
     let mut cur_kmer_offset = 0_usize; 
 
     let mut batch_buffer = std::collections::BinaryHeap::<Reverse<QueryBatch>>::new(); // Reverse makes it a min heap
-    let mut n_batches_printed = 0_usize;
+    let mut n_kmers_processed = 0_usize;
 
     while let Ok(batch) = query_results.recv() {
         batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
@@ -136,11 +137,11 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
                         print!("{:?} ", x); // TODO: better printing
                     }
                     println!();
+                    n_kmers_processed += min_batch.result.len();
 
                     cur_seq_id = min_batch.seq_id_range.end; // Next batch to print starts from here
                     cur_kmer_offset = min_batch.end_kmer_offset; // Next batch to print starts from here
                     batch_buffer.pop();
-                    n_batches_printed += 1;
                 } else {
                     break; // Not ready to print min_batch yet
                 }
@@ -150,6 +151,7 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
         }
     }
 
+    n_kmers_processed
     // Channel is dropped (= closed) here.
 }
 
@@ -160,7 +162,7 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
     let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
     let query_start = std::time::Instant::now();
 
-    std::thread::scope(|s| {
+    let n_kmers_processed = std::thread::scope(|s| {
         let reader_handle = s.spawn(|| {
             // Reader thread that pushes batches for workers
 
@@ -188,7 +190,7 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
         });
 
         let writer_handle = s.spawn(|| {
-            output_thread(output_recv);
+            output_thread(output_recv) // Returns number of k-mers processed
         });
 
         let mut worker_handles = Vec::new();
@@ -205,7 +207,10 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
         // Wait for threads to finish
         reader_handle.join().unwrap(); // All work batches pushed to workers
         worker_handles.into_iter().for_each(|w| w.join().unwrap()); // All batches processed
-        writer_handle.join().unwrap(); // All output written out
+        let n_kmers_processed = writer_handle.join().unwrap(); // All output written out
+
+        #[allow(clippy::let_and_return)] // Is clearer to give it a name
+        n_kmers_processed
     });
 
     let query_duration = query_start.elapsed();
@@ -214,11 +219,11 @@ fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmer
         let hits = color_hit_counts[color];
         println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64 * 100.0);
     }
-    
-    eprintln!("{} k-mers queried in {} seconds (excluding index loading time)", total_kmers_queried, query_duration.as_secs());
-    eprintln!("{:.2}% of query k-mers found", color_hit_counts.iter().sum::<usize>() as f64 / total_kmers_queried as f64 * 100.0);
-    eprintln!("Query time per k-mer: {} nanoseconds", query_duration.as_nanos() as f64 / total_kmers_queried as f64);
     */
+    
+    eprintln!("{} k-mers queried in {} seconds (excluding index loading time)", n_kmers_processed, query_duration.as_secs());
+    //eprintln!("{:.2}% of query k-mers found", color_hit_counts.iter().sum::<usize>() as f64 / total_kmers_queried as f64 * 100.0);
+    eprintln!("Query time per k-mer: {} nanoseconds", query_duration.as_nanos() as f64 / n_kmers_processed as f64);
 
 }
 
