@@ -114,7 +114,16 @@ impl QueryBatch {
 
 impl ProcessedQueryBatch {
     fn write<W: Write>(&self, out: &mut W) {
-
+        for (i, n) in self.result.iter().enumerate() {
+            if i > 0 {
+                out.write_all(b" ").unwrap();
+            }
+            match n {
+                Some(v) => write!(out, "{v}").unwrap(),
+                None => out.write_all(b"X").unwrap(),
+            }
+        }
+        out.write_all(b"\n").unwrap();
     }
 }
 
