@@ -21,7 +21,6 @@ struct ProcessedQueryBatch {
 
 impl QueryBatch {
     fn run(self, index: &SingleColoredKmers) -> ProcessedQueryBatch {
-        eprintln!("{:?} {:?} {:?}", self.batch_id, self.sequence_breaks, self.seqs.sequence_count());
         let k = index.k();
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
             acc + kmers_in_n(k, rec.seq.len()) 
