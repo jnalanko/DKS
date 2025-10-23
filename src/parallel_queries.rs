@@ -8,27 +8,15 @@ use crate::single_colored_kmers::SingleColoredKmers;
 struct QueryBatch {
     seqs: SeqDB,
 
-    // The sequences in `seqs` are subsequence of some longer sequences S_1, ... S_n.
-    seq_id_range: Range<usize>,
-
-    // The values max(0, |S_i|-k+1) for i in seq_id_range. This is needed to write the output correctly.
-    kmer_counts_in_seq_range: Vec<usize>,
-
-    // The first k-mer in the first sequence in `seqs` starts at `start_kmer_offset` in S_{seq_id_range.start}
-    start_kmer_offset: usize,
-
-    // One past the starting point of the last k-mer in the last sequence
-    end_kmer_offset: usize, 
+    batch_id: usize,
+    sequence_breaks: Vec<usize> // List of nucleotide positions after which we should output a newline in the output
 }
 
 struct ProcessedQueryBatch {
     result: Vec<Option<usize>>,
 
-    // See comments in QueryBatch
-    seq_id_range: Range<usize>,
-    kmer_counts_in_seq_range: Vec<usize>,
-    start_kmer_offset: usize,
-    end_kmer_offset: usize, 
+    batch_id: usize,
+    sequence_breaks: Vec<usize> // List of nucleotide positions after which we should output a newline in the output
 }
 
 impl QueryBatch {
@@ -52,38 +40,27 @@ impl QueryBatch {
 
         assert_eq!(color_ids.len(), total_query_kmers);
         ProcessedQueryBatch{
-            seq_id_range: self.seq_id_range,
-            start_kmer_offset: self.start_kmer_offset,
-            end_kmer_offset: self.end_kmer_offset,
-            kmer_counts_in_seq_range: self.kmer_counts_in_seq_range,
             result: color_ids,
+            batch_id: self.batch_id,
+            sequence_breaks: self.sequence_breaks,
         }
     }
 }
 
 impl ProcessedQueryBatch {
     fn write<W: Write>(&self, out: &mut W) {
-        let mut kmer_start = self.start_kmer_offset;
-        let mut batch_seq_id = 0;
-        for color in self.result.iter() {
-            if kmer_start > 0 {
-                // Not the first k-mer
-                out.write_all(b" ").unwrap();
-            }
+        let mut seq_break_idx = 0;
+        for (i, color) in self.result.iter().enumerate() {
 
-            // Write the color id, or "X" if None
-            match color {
-                Some(color) => write!(out, "{color}").unwrap(),
-                None => write!(out, "X").unwrap(),
-            };
-
-            // End the line if needed
-            if self.kmer_counts_in_seq_range[batch_seq_id] == kmer_start + 1 {
-                // Was the last k-mer of this sequence
+            while seq_break_idx < self.sequence_breaks.len() && self.sequence_breaks[seq_break_idx] == i {
                 out.write_all(b"\n").unwrap();
-                kmer_start = 0;
-                batch_seq_id += 1;
+                seq_break_idx += 1;
             }
+
+            match color {
+                Some(color) => write!(out, "{color} ").unwrap(), // Todo: new space after last one
+                None => write!(out, "X ").unwrap(), // Todo: new space after last one
+            };
         }
     }
 }
@@ -163,40 +140,70 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
     let k = index.k();
 
     let n_kmers_processed = std::thread::scope(|s| {
+
         let reader_handle = s.spawn(|| {
             // Reader thread that pushes batches for workers
-
-            let mut seq_id = 0_usize;
-            let mut seq_batch = SeqDB::new();
-            let mut chars_in_seqs = 0_usize;
-            let mut seq_id_at_start_of_batch = 0_usize; // TODO: remember to update
+            let mut buf = SeqDB::new();
+            let mut seq_breaks = Vec::<usize>::new();
+            let mut n_chars_in_buf = 0_usize;
+            let mut batch_id = 0_usize;
             while let Some(rec) = reader.read_next().unwrap() {
-                if chars_in_seqs + rec.seq.len() >= batch_size {
-                    let head = batch_size - chars_in_seqs;
-                    seq_batch.push_seq(&rec.seq[..head]);
-
-                    let kmer_counts = seq_batch.iter().map(|rec| kmers_in_n(k, rec.seq.len())).collect();
-
-                    let batch = QueryBatch{
-                        seqs: seq_batch,
-                        seq_id_range: seq_id_at_start_of_batch..seq_id+1,
-                        start_kmer_offset: 0,
-                        end_kmer_offset: kmers_in_n(k, rec.seq.len()),
-                        kmer_counts_in_seq_range: kmer_counts
-                    };
-
-                    batch_send.send(batch).unwrap();
-                    seq_batch = SeqDB::new();
-                    chars_in_seqs = 0;
-                    seq_id_at_start_of_batch...
+                if n_chars_in_buf + rec.seq.len() < batch_size {
+                    buf.push_seq(rec.seq);
+                    n_chars_in_buf += rec.seq.len();
+                    assert!(n_chars_in_buf > 0);
+                    seq_breaks.push(n_chars_in_buf-1);
                 } else {
-                    seq_batch.push_seq(rec.seq);
+                    let mut head_len = batch_size - n_chars_in_buf;
+                    let mut head = &rec.seq[0..head_len];
+                    let mut tail = &rec.seq[head_len..];
+                    loop { // Keep sending full batches for as long as we can
+
+                        buf.push_seq(head);
+                        n_chars_in_buf += head_len;
+
+                        if tail.len() == 0 {
+                            seq_breaks.push(n_chars_in_buf-1);
+                        }
+
+                        let batch = QueryBatch {
+                            seqs: buf,
+                            batch_id,
+                            sequence_breaks: seq_breaks,
+                        };
+
+                        batch_send.send(batch);
+
+                        batch_id += 1;
+                        buf = SeqDB::new();
+                        n_chars_in_buf = 0;
+                        seq_breaks = Vec::new();
+
+                        if tail.len() >= batch_size {
+                            head = &tail[0..batch_size];
+                            tail = &tail[batch_size..];
+                            head_len = batch_size;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    buf.push_seq(&tail);
+                    n_chars_in_buf += tail.len();
                 }
-
-
-
-                seq_id += 1;
             }
+
+            if n_chars_in_buf > 0 {
+                // Last one
+                seq_breaks.push(n_chars_in_buf - 1);
+                let batch = QueryBatch {
+                    seqs: buf,
+                    batch_id,
+                    sequence_breaks: seq_breaks,
+                };
+                batch_send.send(batch);
+            }
+
 
             eprintln!("All input read");
             drop(batch_send); // Close the channel
