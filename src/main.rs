@@ -1,12 +1,12 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf, sync::Arc};
+use std::{cmp::max, fs::File, io::{BufRead, BufReader, BufWriter}, ops::Range, path::PathBuf, sync::Arc};
 use bitvec::prelude::*;
 use clap::{builder::PossibleValuesParser, Parser, Subcommand};
 use indicatif::HumanBytes;
 use io::LazyFileSeqStream;
-use jseqio::reader::DynamicFastXReader;
-use sbwt::{BitPackedKmerSorting, BitPackedKmerSortingMem, LcsArray, SbwtConstructionAlgorithm, SbwtIndex, SbwtIndexVariant, SeqStream, SubsetMatrix};
+use jseqio::{reader::DynamicFastXReader, seq_db::SeqDB};
+use sbwt::{BitPackedKmerSorting, BitPackedKmerSortingMem, ContractLeft, ExtendRight, LcsArray, SbwtConstructionAlgorithm, SbwtIndex, SbwtIndexVariant, SeqStream, StreamingIndex, SubsetMatrix};
 use single_colored_kmers::SingleColoredKmers;
 
 mod single_colored_kmers;
@@ -51,11 +51,45 @@ pub enum Subcommands {
         #[arg(help = "Path to the index file", short, long, required = true)]
         index: PathBuf,
 
-        //#[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
-        //n_threads: usize,
+        #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
+        n_threads: usize,
     },
 }
 
+struct QueryBatch {
+    seqs: SeqDB,
+
+    // The sequences in `seqs` are subsequence of some longer sequences S_1, ... S_n.
+    // The first k-mer in the first sequence in `seqs` starts at `start_kmer_offset` in S_{seq_id_range.start}
+    // The last k-mer in the last sequence in `seqs` starts at `end_kmer_offset` in S_{seq_id_range.end - 1}
+    seq_id_range: Range<usize>,
+    start_kmer_offset: usize,
+    end_kmer_offset: usize,
+
+    result: Vec<Option<usize>>, // Color ids of the query k-mers
+}
+
+fn lookup_job(index: SingleColoredKmers, mut queries: QueryBatch) {
+    let k = index.k() as isize;
+    let total_query_kmers = queries.seqs.iter().fold(0_isize, |acc, rec| 
+        acc + max(rec.seq.len() as isize - k + 1, 0)
+    );
+    let mut color_ids = Vec::<Option::<usize>>::with_capacity(total_query_kmers as usize);
+
+    for rec in queries.seqs.iter() {
+        for color in index.lookup_kmers(rec.seq) {
+            if let Some(color) = color {
+                color_ids.push(Some(color));
+            } else {
+                color_ids.push(None);
+            }
+        }
+    }
+
+    assert_eq!(color_ids.len(), total_query_kmers as usize);
+    queries.result = color_ids;
+
+}
 
 fn main() {
     if std::env::var("RUST_LOG").is_err() {
@@ -105,7 +139,7 @@ fn main() {
             log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
         },
 
-        Subcommands::Lookup{query: query_path, index: index_path} => {
+        Subcommands::Lookup{query: query_path, index: index_path, n_threads} => {
             eprintln!("Loading the index ...");
             let mut index_input = BufReader::new(File::open(index_path).unwrap());
 

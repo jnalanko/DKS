@@ -43,6 +43,10 @@ impl Iterator for KmerLookupIterator<'_, '_> {
 
 impl SingleColoredKmers {
 
+    pub fn k(&self) -> usize {
+        self.sbwt.k()
+    }
+
     pub fn serialize(&self, mut out: &mut impl Write) {
         self.sbwt.serialize(out).unwrap();
         self.lcs.serialize(out).unwrap();
