@@ -21,6 +21,7 @@ struct ProcessedQueryBatch {
 
 impl QueryBatch {
     fn run(self, index: &SingleColoredKmers) -> ProcessedQueryBatch {
+        eprintln!("{:?} {:?} {:?}", self.batch_id, self.sequence_breaks, self.seqs.sequence_count());
         let k = index.k();
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
             acc + kmers_in_n(k, rec.seq.len()) 
@@ -177,8 +178,11 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                         }
                     }
 
-                    buf.push_seq(&tail);
-                    n_chars_in_buf += tail.len();
+                    if tail.len() > 0 {
+                        buf.push_seq(tail);
+                        n_chars_in_buf += tail.len();
+                        seq_breaks.push(n_chars_in_buf-1);
+                    }
                 }
             }
 
