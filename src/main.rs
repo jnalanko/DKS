@@ -1,6 +1,6 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{cmp::{max, Reverse}, fs::File, io::{BufRead, BufReader, BufWriter}, ops::Range, path::PathBuf, sync::Arc};
+use std::{cmp::{max, Reverse}, fs::File, io::{BufRead, BufReader, BufWriter}, ops::Range, path::{Path, PathBuf}, sync::Arc, thread::ScopedJoinHandle};
 use bitvec::prelude::*;
 use clap::{builder::PossibleValuesParser, Parser, Subcommand};
 use indicatif::HumanBytes;
@@ -61,19 +61,18 @@ struct QueryBatch {
 
     // The sequences in `seqs` are subsequence of some longer sequences S_1, ... S_n.
     // The first k-mer in the first sequence in `seqs` starts at `start_kmer_offset` in S_{seq_id_range.start}
-    // The last k-mer in the last sequence in `seqs` starts at `end_kmer_offset` in S_{seq_id_range.end - 1}
     seq_id_range: Range<usize>,
     start_kmer_offset: usize,
-    end_kmer_offset: usize,
+    end_kmer_offset: usize, // One past the starting point of the last k-mer
 
     result: Vec<Option<usize>>, // Color ids of the query k-mers
 }
 
 impl QueryBatch {
-    fn run(&mut self, index: SingleColoredKmers) {
-        let k = index.k() as isize;
-        let total_query_kmers = self.seqs.iter().fold(0_isize, |acc, rec| 
-            acc + max(rec.seq.len() as isize - k + 1, 0)
+    fn run(&mut self, index: &SingleColoredKmers) {
+        let k = index.k();
+        let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
+            acc + kmers_in_n(k, rec.seq.len()) 
         );
         let mut color_ids = Vec::<Option::<usize>>::with_capacity(total_query_kmers as usize);
 
@@ -113,6 +112,10 @@ impl Ord for QueryBatch {
     }
 }
 
+fn kmers_in_n(k: usize, n: usize) -> usize {
+    max(0, n as isize - k as isize + 1) as usize
+}
+
 fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
     let cur_seq_id = 0_usize;
     let cur_kmer_offset = 0_usize; 
@@ -127,9 +130,9 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
                 if min_batch.seq_id_range.start == cur_seq_id && min_batch.start_kmer_offset == cur_kmer_offset {
-                    // <printing code here TODO>
-                    todo!();
-
+                    for x in min_batch.result.iter() {
+                        println!("{:?}", x); // TODO: better printing
+                    }
                     batch_buffer.pop();
                 } else {
                     break; // Not ready to print min_batch yet
@@ -137,6 +140,69 @@ fn output_thread(query_results: crossbeam::channel::Receiver<QueryBatch>) {
             }
         }
     }
+}
+
+fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmers) {
+    let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
+    let (output_send, output_recv) = crossbeam::channel::bounded::<QueryBatch>(2);
+
+    let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
+    let query_start = std::time::Instant::now();
+
+    std::thread::scope(|s| {
+        let reader_handle = s.spawn(|| {
+            // Reader thread that pushes batches for workers
+
+            let mut seq_id = 0_usize;
+            while let Some(rec) = reader.read_next().unwrap() {
+                // Todo: break long sequences into multiple batches and combine short sequences
+
+                let mut seqs = SeqDB::new();
+                seqs.push_seq(rec.seq);
+
+                let batch = QueryBatch{
+                    seqs,
+                    seq_id_range: seq_id..seq_id+1,
+                    start_kmer_offset: 0,
+                    end_kmer_offset: kmers_in_n(index.k(), rec.seq.len()),
+                    result: Vec::new(),
+                };
+
+                batch_send.send(batch).unwrap();
+
+                seq_id += 1;
+            }
+
+            drop(batch_send); // Close the channel
+        });
+
+        let mut worker_handles = Vec::new();
+        for _ in 0..n_threads {
+            worker_handles.push(s.spawn(|| {
+                while let Ok(mut batch) = batch_recv.recv() {
+                    batch.run(&index);
+                    output_send.send(batch).unwrap();
+                }
+            }));
+        }
+
+        // Wait for threads to finish
+        reader_handle.join().unwrap(); // All work batches pushed to workers
+        worker_handles.into_iter().for_each(|w| w.join().unwrap()); // All batches processed
+    });
+
+    let query_duration = query_start.elapsed();
+    
+    /*for color in 0..index.n_colors() {
+        let hits = color_hit_counts[color];
+        println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64 * 100.0);
+    }
+    
+    eprintln!("{} k-mers queried in {} seconds (excluding index loading time)", total_kmers_queried, query_duration.as_secs());
+    eprintln!("{:.2}% of query k-mers found", color_hit_counts.iter().sum::<usize>() as f64 / total_kmers_queried as f64 * 100.0);
+    eprintln!("Query time per k-mer: {} nanoseconds", query_duration.as_nanos() as f64 / total_kmers_queried as f64);
+    */
+
 }
 
 fn main() {
@@ -195,28 +261,8 @@ fn main() {
             let index = SingleColoredKmers::load(&mut index_input);
             eprintln!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             eprintln!("Running queries from {} ...", query_path.display());
-            let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
-            let mut color_hit_counts = vec![0_usize; index.n_colors()];
-            let mut total_kmers_queried = 0_usize;
-            let query_start = std::time::Instant::now();
-            while let Some(rec) = reader.read_next().unwrap() {
-                for color in index.lookup_kmers(rec.seq) {
-                    if let Some(color) = color {
-                        color_hit_counts[color] += 1;
-                    }
-                    total_kmers_queried += 1;
-                }
-            }
+            lookup_parallel(n_threads, &query_path, index);
 
-            let query_duration = query_start.elapsed();
-            for color in 0..index.n_colors() {
-                let hits = color_hit_counts[color];
-                println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64 * 100.0);
-            }
-            
-            eprintln!("{} k-mers queried in {} seconds (excluding index loading time)", total_kmers_queried, query_duration.as_secs());
-            eprintln!("{:.2}% of query k-mers found", color_hit_counts.iter().sum::<usize>() as f64 / total_kmers_queried as f64 * 100.0);
-            eprintln!("Query time per k-mer: {} nanoseconds", query_duration.as_nanos() as f64 / total_kmers_queried as f64);
         }
     } 
 }
