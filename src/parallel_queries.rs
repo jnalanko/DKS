@@ -198,7 +198,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                     };
 
 
-                    if piece_idx == 0 {
+                    if piece_idx == 0 && batch_id > 0 {
                         seq_breaks.push(kmers_in_batch);
                     }
                     batch_seqs.push_seq(piece);
