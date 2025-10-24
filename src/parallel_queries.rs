@@ -223,24 +223,6 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
 
             let mut batch = QueryBatch::new(0, index.k()); // Initialize an empty batch
             while let Some(rec) = reader.read_next().unwrap() {
-                // Let b be batch size and n be the length of the sequence.
-                // Split the sequence into m pieces of length b except for the
-                // last sequence that can have a shorter length, such that the
-                // pieces overlap by k-1 characters and cover the whole sequence.
-                // Record a sequence break at the end of the last sequence.
-
-                // How many pieces will be there be? That is, what is the smallest
-                // m such that
-                //
-                // b + (m-1)*(b-(k-1)) >= n
-                //
-                // We must have b-k+1 > 0, or otherwise the inequality flips the wrong way around.
-                // Assuming b-k+1 > 0, the solution is:
-                //
-                // m >= (n-k+1) / (b-k+1)
-                //
-                // So we take the ceil of the righthand side.
-
                 let seq = rec.seq; 
                 let n = seq.len();
                 let b = batch_size;
@@ -252,15 +234,19 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
                     continue;
                 }
 
+                // Let b be batch size and n be the length of the sequence.
+                // Split the sequence into m pieces of length b except for the
+                // last sequence that can have a shorter length, such that the
+                // pieces overlap by k-1 characters and cover the whole sequence.
+                // How many pieces will be there be? That is, what is the smallest
+                // m such that b + (m-1)*(b-(k-1)) >= n? We must have b-k+1 > 0, or 
+                // otherwise the inequality flips the wrong way around.
+                // Assuming b-k+1 > 0, the solution is: m >= (n-k+1) / (b-k+1).
+                // So we take the ceil of the righthand side.
+
                 assert!(b as isize - k as isize + 1 > 0); // b-k+1 > 0
                 let m = (n-k+1).div_ceil(b-k+1);
                 assert!(m > 0); // This should be true since we checked for n < k earlier
-
-                // Sanity checks: 
-                //     if n = k and b > k-1, then m = ceil(1 / positive), so m >= 1. Correct.
-                //     if n = k+3 and b = k, then m = ceil(4) = 4. Correct.
-                //     if n = 100, b = 30 and k = 10, then m = 5. Correct.
-                // Seems to work.
 
                 for piece_idx in 0..m {
                     let pieces_before = piece_idx;
@@ -277,7 +263,6 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
                     if batch.len() >= b {
                         let next_batch_id = batch.batch_id + 1;
                         batch_send.send(batch).unwrap();
-
                         batch = QueryBatch::new(next_batch_id, index.k());
                     }
                 }
