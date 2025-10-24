@@ -12,6 +12,7 @@ struct QueryBatch {
     sequence_starts: Vec<usize> // Source sequence changes at these answer indices 
 }
 
+#[derive(Debug)]
 struct ProcessedQueryBatch {
     result: Vec<Option<usize>>,
 
@@ -84,6 +85,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             let min_batch = batch_buffer.peek();
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
+                dbg!(&min_batch);
                 if min_batch.batch_id == next_batch_id {
                     let mut starts_ptr = min_batch.sequence_starts.iter().peekable();
                     for (i, color) in min_batch.result.iter().enumerate() {
@@ -208,8 +210,9 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                         &rec.seq[start..] // Until the end (can have length shorter than b)
                     };
 
-
-                    seq_starts.push(kmers_in_batch);
+                    if piece_idx == 0 {
+                        seq_starts.push(kmers_in_batch);
+                    }
                     batch_seqs.push_seq(piece);
                     kmers_in_batch += kmers_in_n(k, piece.len());
                     chars_in_batch += piece.len();
