@@ -290,7 +290,9 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
         let writer_handle = s.spawn(|| {
             // 128kb = 2^17 byte buffer
             let mut stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
-            output_thread(output_recv, &mut stdout) // Returns number of k-mers processed
+            let n_kmers = output_thread(output_recv, &mut stdout); // Returns number of k-mers processed
+            stdout.flush().unwrap(); // They say this needs to be done because errors during drop are ignored
+            n_kmers
         });
 
         let mut worker_handles = Vec::new();
