@@ -96,7 +96,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                             if let Some(p) = run_open {
                                 if let Some(c) = run_color {
                                     // Write the run only if it's not None
-                                    writeln!(out, "{}\t{}-{}\t{:?}", cur_seq_id, p, p + run_len - 1, run_color).unwrap();
+                                    writeln!(out, "{}\t{}-{}\t{}", cur_seq_id, p, p + run_len - 1, c).unwrap();
                                 }
                                 run_open = None;
                                 run_len = 0;
@@ -121,7 +121,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                                     // Run ends
                                     if let Some(c) = run_color {
                                         // Write the run only if it's not None
-                                        writeln!(out, "{}\t{}-{}\t{:?}", cur_seq_id, p, p+run_len-1, run_color).unwrap();
+                                        writeln!(out, "{}\t{}-{}\t{}", cur_seq_id, p, p+run_len-1, c).unwrap();
                                     }
                                     run_open = Some(p+run_len);
                                     run_len = 1;
