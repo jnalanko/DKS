@@ -71,16 +71,77 @@ fn kmers_in_n(k: usize, n: usize) -> usize {
     max(0, n as isize - k as isize + 1) as usize
 }
 
+struct OutputState {
+    cur_seq_id: isize,
+    run_open: Option<usize>,
+    run_len: usize,
+    run_color: Option<usize>, 
+}
+
+fn output_batch<W: Write>(batch: &ProcessedQueryBatch, state: &mut OutputState, out: &mut W) {
+
+    let cur_seq_id = &mut state.cur_seq_id;
+    let run_open = &mut state.run_open;
+    let run_len = &mut state.run_len;
+    let run_color = &mut state.run_color;
+
+    let mut starts_ptr = batch.sequence_starts.iter().peekable();
+    for (i, color) in batch.result.iter().enumerate() {
+        while starts_ptr.peek().is_some_and(|&&s| s == i) {
+            // New sequence starts. This closes the currently open run, if exists
+            if let Some(p) = run_open {
+                if let Some(c) = run_color {
+                    // Write the run only if it's not None
+                    writeln!(out, "{}\t{}\t{}\t{}", cur_seq_id, p, *p + *run_len - 1, c).unwrap();
+                }
+                *run_open = None;
+                *run_len = 0;
+            }
+            starts_ptr.next();
+            *cur_seq_id += 1;
+        }
+
+        match run_open {
+            None => { 
+                // We are at the start of a sequence -> open a new run
+                *run_open = Some(0);
+                *run_len = 1;
+                *run_color = *color;
+            },
+            Some(p) => { 
+                // See if we can extend the current run
+                if *run_color == *color {
+                    // Extend
+                    *run_len += 1; 
+                } else {
+                    // Run ends
+                    if let Some(c) = run_color {
+                        // Write the run only if it's not None
+                        writeln!(out, "{}\t{}\t{}\t{}", cur_seq_id, p, *p + *run_len-1, c).unwrap();
+                    }
+                    *run_open = Some(*p + *run_len);
+                    *run_len = 1;
+                    *run_color = *color;
+                }
+            }
+        }
+    }
+
+}
+
 // Returns the total number of k-mers in all the received batches
 fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch>, out: &mut W) -> usize {
     let mut batch_buffer = std::collections::BinaryHeap::<Reverse<ProcessedQueryBatch>>::new(); // Reverse makes it a min heap
     let mut n_kmers_processed = 0_usize;
     let mut next_batch_id = 0_usize;
-    let mut cur_seq_id = -1_isize;
 
-    let mut run_open: Option<usize> = None; // Starting position of the current run it its sequence
-    let mut run_len = 0_usize;
-    let mut run_color: Option<usize> = None; 
+    let mut output_state = OutputState {
+        cur_seq_id: -1,
+        run_open: None, // Run of the same color (None counts as color)
+        run_len: 0,
+        run_color: None,
+    };
+    
     while let Ok(batch) = query_results.recv() {
         batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
 
@@ -89,49 +150,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
                 if min_batch.batch_id == next_batch_id {
-                    let mut starts_ptr = min_batch.sequence_starts.iter().peekable();
-                    for (i, color) in min_batch.result.iter().enumerate() {
-                        while starts_ptr.peek().is_some_and(|&&s| s == i) {
-                            // New sequence starts. This closes the currently open run, if exists
-                            if let Some(p) = run_open {
-                                if let Some(c) = run_color {
-                                    // Write the run only if it's not None
-                                    writeln!(out, "{}\t{}\t{}\t{}", cur_seq_id, p, p + run_len - 1, c).unwrap();
-                                }
-                                run_open = None;
-                                run_len = 0;
-                            }
-                            starts_ptr.next();
-                            cur_seq_id += 1;
-                        }
-
-                        match run_open {
-                            None => { 
-                                // We are at the start of a sequence -> open a new run
-                                run_open = Some(0);
-                                run_len = 1;
-                                run_color = *color;
-                            },
-                            Some(p) => { 
-                                // See if we can extend the current run
-                                if run_color == *color {
-                                    // Extend
-                                    run_len += 1; 
-                                } else {
-                                    // Run ends
-                                    if let Some(c) = run_color {
-                                        // Write the run only if it's not None
-                                        writeln!(out, "{}\t{}\t{}\t{}", cur_seq_id, p, p+run_len-1, c).unwrap();
-                                    }
-                                    run_open = Some(p+run_len);
-                                    run_len = 1;
-                                    run_color = *color;
-                                }
-                            }
-                        }
-                    }
-
-
+                    output_batch(min_batch, &mut output_state, out);
                     n_kmers_processed += min_batch.result.len();
                     batch_buffer.pop();
                     next_batch_id += 1;
@@ -139,7 +158,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                     break; // Not ready to print min_batch yet
                 }
             } else {
-                break; // Batch buffer is empty 
+                break; // Batch buffer is empty -> We are done
             }
         }
 
@@ -149,9 +168,9 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
 
     // The last run of the last batch remains open (unless it's closed by the start of a
     // sequence that has no k-mers). Let's write it.
-    if let Some(p) = run_open {
-        if let Some(c) = run_color {
-            writeln!(out, "{}\t{}\t{}\t{}", cur_seq_id, p, p+run_len-1, c).unwrap();
+    if let Some(p) = output_state.run_open {
+        if let Some(c) = output_state.run_color {
+            writeln!(out, "{}\t{}\t{}\t{}", output_state.cur_seq_id, p, p+output_state.run_len-1, c).unwrap();
         }
     }
 
@@ -178,10 +197,8 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
             let mut kmers_in_batch = 0_usize;
             let mut seq_starts = Vec::<usize>::new();
             let mut batch_id = 0_usize;
-            let mut n_seqs_read = 0_usize;
 
             while let Some(rec) = reader.read_next().unwrap() {
-                n_seqs_read += 1;
                 // Let b be batch size and n be the length of the sequence.
                 // Split the sequence into m pieces of length b except for the
                 // last sequence that can have a shorter length, such that the
@@ -301,14 +318,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
 
     let query_duration = query_start.elapsed();
     
-    /*for color in 0..index.n_colors() {
-        let hits = color_hit_counts[color];
-        println!("Color {}: {} hits ({:.2}%)", color, hits, hits as f64 / total_kmers_queried as f64 * 100.0);
-    }
-    */
-    
     eprintln!("{} k-mers queried in {} seconds (excluding index loading time)", n_kmers_processed, query_duration.as_secs());
-    //eprintln!("{:.2}% of query k-mers found", color_hit_counts.iter().sum::<usize>() as f64 / total_kmers_queried as f64 * 100.0);
     eprintln!("Query time per k-mer: {} nanoseconds", query_duration.as_nanos() as f64 / n_kmers_processed as f64);
 
 }
