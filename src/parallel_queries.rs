@@ -1,4 +1,4 @@
-use std::{cmp::{max, min, Reverse}, io::Write, ops::Range, path::Path};
+use std::{cmp::{max, min, Reverse}, io::{BufWriter, Write}, ops::Range, path::Path};
 
 use jseqio::{reader::DynamicFastXReader, seq_db::SeqDB};
 
@@ -271,7 +271,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
         });
 
         let writer_handle = s.spawn(|| {
-            let mut stdout = std::io::stdout();
+            let mut stdout = BufWriter::new(std::io::stdout());
             output_thread(output_recv, &mut stdout) // Returns number of k-mers processed
         });
 
