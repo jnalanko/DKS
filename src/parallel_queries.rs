@@ -94,7 +94,10 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                         while starts_ptr.peek().is_some_and(|&&s| s == i) {
                             // New sequence starts. This closes the currently open run, if exists
                             if let Some(p) = run_open {
-                                write!(out, " {}-{} {:?}", p, p + run_len - 1, run_color).unwrap();
+                                if let Some(c) = run_color {
+                                    // Write the run only if it's not None
+                                    write!(out, " {}-{} {:?}", p, p + run_len - 1, c).unwrap();
+                                }
                                 run_open = None;
                                 run_len = 0;
                             }
@@ -123,7 +126,10 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                                     run_len += 1; 
                                 } else {
                                     // Run ends
-                                    write!(out, " {}-{} {:?}", p, p+run_len-1, run_color).unwrap();
+                                    if let Some(c) = run_color {
+                                        // Write the run only if it's not None
+                                        write!(out, " {}-{} {:?}", p, p+run_len-1, c).unwrap();
+                                    }
                                     run_open = Some(p+run_len);
                                     run_len = 1;
                                     run_color = *color;
