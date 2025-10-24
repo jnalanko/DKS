@@ -147,8 +147,10 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
             let mut kmers_in_batch = 0_usize;
             let mut seq_breaks = Vec::<usize>::new();
             let mut batch_id = 0_usize;
+            let mut n_seqs_read = 0_usize;
 
             while let Some(rec) = reader.read_next().unwrap() {
+                n_seqs_read += 1;
                 // Let b be batch size and n be the length of the sequence.
                 // Split the sequence into m pieces of length b except for the
                 // last sequence that can have a shorter length, such that the
@@ -198,7 +200,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                     };
 
 
-                    if piece_idx == 0 && batch_id > 0 {
+                    if piece_idx == 0 && n_seqs_read > 1 {
                         seq_breaks.push(kmers_in_batch);
                     }
                     batch_seqs.push_seq(piece);
