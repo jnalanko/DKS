@@ -64,11 +64,11 @@ impl ProcessedQueryBatch {
             };
         }
 
-        if self.result.is_empty() { // Might need to add sequence breaks at index 0. This happens at the last empty batch
-            for &br in self.sequence_breaks.iter() {
-                assert!(br == 0);
-                out.write_all(b"\n").unwrap();
-            }
+        // Add possible sequence breaks at the end
+        while seq_break_idx < self.sequence_breaks.len() {
+            assert!(self.sequence_breaks[seq_break_idx] == self.result.len());
+            out.write_all(b"\n").unwrap();
+            seq_break_idx += 1;
         }
     }
 }
@@ -228,19 +228,16 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                 }
             }
 
-            if chars_in_batch > 0 || seq_breaks.len() > 0 {
-                // Push the last remaining non-full batch
-                let batch = QueryBatch {
-                    seqs: batch_seqs,
-                    batch_id,
-                    sequence_breaks: seq_breaks,
-                };
-                batch_id += 1;
-                batch_send.send(batch).unwrap();
-            }
+            eprintln!("Remaining seq breaks: {:?}", seq_breaks);
 
-            // Push one more empty batch with a sequence break to get a newline at the end
-            batch_send.send(QueryBatch{seqs: SeqDB::new(), batch_id, sequence_breaks: vec![0]}).unwrap();
+            // Push the last remaining non-full batch
+            seq_breaks.push(kmers_in_batch); // Add a sequence break at the end to get a final newline
+            let batch = QueryBatch {
+                seqs: batch_seqs,
+                batch_id,
+                sequence_breaks: seq_breaks,
+            };
+            batch_send.send(batch).unwrap();
 
             eprintln!("All input read");
             drop(batch_send); // Close the channel
