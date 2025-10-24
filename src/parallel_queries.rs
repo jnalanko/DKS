@@ -78,6 +78,9 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
     let mut next_batch_id = 0_usize;
     let mut cur_seq_id = -1_isize;
 
+    let mut run_open: Option<usize> = None; // Starting position of the current run it its sequence
+    let mut run_len = 0_usize;
+    let mut run_color: Option<usize> = None; 
     while let Ok(batch) = query_results.recv() {
         batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
 
@@ -89,8 +92,16 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                     let mut starts_ptr = min_batch.sequence_starts.iter().peekable();
                     for (i, color) in min_batch.result.iter().enumerate() {
                         while starts_ptr.peek().is_some_and(|&&s| s == i) {
+                            // New sequence starts. This closes the currently open run, if exists
+                            if let Some(p) = run_open {
+                                write!(out, " {}-{} {:?}", p, p + run_len - 1, run_color).unwrap();
+                                run_open = None;
+                                run_len = 0;
+                            }
+
                             starts_ptr.next();
                             cur_seq_id += 1;
+
                             if cur_seq_id == 0 {
                                 write!(out, "{cur_seq_id}").unwrap();
                             } else {
@@ -98,14 +109,31 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                             }
                         }
 
-                        match color {
-                            Some(color) => write!(out, " {color}").unwrap(),
-                            None => write!(out, " X").unwrap(),
-                        };
+                        match run_open {
+                            None => { 
+                                // We are at the start of a sequence -> open a new run
+                                run_open = Some(0);
+                                run_len = 1;
+                                run_color = *color;
+                            },
+                            Some(p) => { 
+                                // See if we can extend the current run
+                                if run_color == *color {
+                                    // Extend
+                                    run_len += 1; 
+                                } else {
+                                    // Run ends
+                                    write!(out, " {}-{} {:?}", p, p+run_len-1, run_color).unwrap();
+                                    run_open = Some(p+run_len);
+                                    run_len = 1;
+                                    run_color = *color;
+                                }
+                            }
+                        }
                     }
 
                     // In the last batch we can have sequence starts one past the end of the answers.
-                    // In that case they are empty sequences. Print one line for each. 
+                    // In that case they are sequence sthat are shorter than k. Print one line for each. 
                     for &s in starts_ptr {
                         assert!(s == min_batch.result.len());
                         cur_seq_id += 1;
