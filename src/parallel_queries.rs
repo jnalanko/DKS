@@ -85,7 +85,6 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             let min_batch = batch_buffer.peek();
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
-                dbg!(&min_batch);
                 if min_batch.batch_id == next_batch_id {
                     let mut starts_ptr = min_batch.sequence_starts.iter().peekable();
                     for (i, color) in min_batch.result.iter().enumerate() {
