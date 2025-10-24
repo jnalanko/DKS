@@ -96,20 +96,13 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                             if let Some(p) = run_open {
                                 if let Some(c) = run_color {
                                     // Write the run only if it's not None
-                                    write!(out, " {}-{} {:?}", p, p + run_len - 1, c).unwrap();
+                                    writeln!(out, "{}\t{}-{}\t{}", cur_seq_id, p, p + run_len - 1, c).unwrap();
                                 }
                                 run_open = None;
                                 run_len = 0;
                             }
-
                             starts_ptr.next();
                             cur_seq_id += 1;
-
-                            if cur_seq_id == 0 {
-                                write!(out, "{cur_seq_id}").unwrap();
-                            } else {
-                                write!(out, "\n{cur_seq_id}").unwrap();
-                            }
                         }
 
                         match run_open {
@@ -128,7 +121,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                                     // Run ends
                                     if let Some(c) = run_color {
                                         // Write the run only if it's not None
-                                        write!(out, " {}-{} {:?}", p, p+run_len-1, c).unwrap();
+                                        writeln!(out, "{}\t{}-{}\t{}", cur_seq_id, p, p+run_len-1, c).unwrap();
                                     }
                                     run_open = Some(p+run_len);
                                     run_len = 1;
@@ -138,17 +131,6 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                         }
                     }
 
-                    // In the last batch we can have sequence starts one past the end of the answers.
-                    // In that case they are sequence sthat are shorter than k. Print one line for each. 
-                    for &s in starts_ptr {
-                        assert!(s == min_batch.result.len());
-                        cur_seq_id += 1;
-                        if cur_seq_id == 0 {
-                            write!(out, "{cur_seq_id}").unwrap();
-                        } else {
-                            write!(out, "\n{cur_seq_id}").unwrap();
-                        }
-                    }
 
                     n_kmers_processed += min_batch.result.len();
                     batch_buffer.pop();
@@ -160,11 +142,20 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                 break; // Batch buffer is empty 
             }
         }
+
+        // All batches processed
+
+        // The last run of the last batch remains open (unless it's closed by the start of a
+        // sequence that has no k-mers). Let's write it.
+        if let Some(p) = run_open {
+            if let Some(c) = run_color {
+                writeln!(out, "{}\t{}-{}\t{}", cur_seq_id, p, p+run_len-1, c).unwrap();
+                run_open = None;
+                run_len = 0;
+            }
+        }
     }
 
-    write!(out, "\n"); // One last newline to finish the last line
-
-    //todo!(); // Need to add a newline after the very last seq
     n_kmers_processed
     // Channel is dropped (= closed) here.
 }
