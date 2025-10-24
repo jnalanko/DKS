@@ -183,9 +183,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
 
                 if n < k {
                     // No full k-mers in this sequence
-                    if n_seqs_read > 1 {
-                        seq_starts.push(kmers_in_batch);
-                    }
+                    seq_starts.push(kmers_in_batch);
                     continue;
                 }
 
