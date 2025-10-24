@@ -107,7 +107,7 @@ struct OutputState {
     run_color: Option<usize>, 
 }
 
-fn output_batch<W: Write>(batch: &ProcessedQueryBatch, state: &mut OutputState, out: &mut W) {
+fn output_batch_result<W: Write>(batch: &ProcessedQueryBatch, state: &mut OutputState, out: &mut W) {
 
     let cur_seq_id = &mut state.cur_seq_id;
     let run_open = &mut state.run_open;
@@ -179,7 +179,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
                 if min_batch.batch_id == next_batch_id {
-                    output_batch(min_batch, &mut output_state, out);
+                    output_batch_result(min_batch, &mut output_state, out);
                     n_kmers_processed += min_batch.result.len();
                     batch_buffer.pop();
                     next_batch_id += 1;
