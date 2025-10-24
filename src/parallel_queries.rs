@@ -9,7 +9,10 @@ struct QueryBatch {
     seqs: SeqDB,
 
     batch_id: usize,
-    sequence_starts: Vec<usize> // Source sequence changes at these answer indices 
+    sequence_starts: Vec<usize>, // Source sequence changes at these answer indices 
+    chars_in_batch: usize,
+    kmers_in_batch: usize,
+    k: usize,
 }
 
 #[derive(Debug)]
@@ -21,6 +24,32 @@ struct ProcessedQueryBatch {
 }
 
 impl QueryBatch {
+
+    fn new(batch_id: usize, k: usize) -> Self {
+        Self {
+            seqs: SeqDB::new(),
+            batch_id,
+            sequence_starts: vec![],
+            chars_in_batch: 0,
+            kmers_in_batch: 0,
+            k
+        }
+    }
+
+    fn push(&mut self, seq: &[u8], extend_prev: bool) {
+        if !extend_prev {
+            self.sequence_starts.push(self.kmers_in_batch);
+        }
+        self.seqs.push_seq(seq);
+        self.kmers_in_batch += kmers_in_n(self.k, seq.len());
+        self.chars_in_batch += seq.len();
+
+    }
+
+    fn len(&self) -> usize {
+        self.chars_in_batch
+    }
+
     fn run(self, index: &SingleColoredKmers) -> ProcessedQueryBatch {
         let k = index.k();
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
@@ -192,12 +221,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
 
             // Reader thread that pushes batches for workers
 
-            let mut batch_seqs = SeqDB::new();
-            let mut chars_in_batch = 0_usize;
-            let mut kmers_in_batch = 0_usize;
-            let mut seq_starts = Vec::<usize>::new();
-            let mut batch_id = 0_usize;
-
+            let mut batch = QueryBatch::new(0, index.k()); // Initialize an empty batch
             while let Some(rec) = reader.read_next().unwrap() {
                 // Let b be batch size and n be the length of the sequence.
                 // Split the sequence into m pieces of length b except for the
@@ -215,7 +239,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
                 //
                 // m >= (n-k+1) / (b-k+1)
                 //
-                // So we take the ceil of the
+                // So we take the ceil of the righthand side.
 
                 let seq = rec.seq; 
                 let n = seq.len();
@@ -223,8 +247,8 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
                 let k = index.k();
 
                 if n < k {
-                    // No full k-mers in this sequence
-                    seq_starts.push(kmers_in_batch);
+                    // No full k-mers in this sequence -> push an empty sequence
+                    batch.push(b"", false);
                     continue;
                 }
 
@@ -248,39 +272,18 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
                         &rec.seq[start..] // Until the end (can have length shorter than b)
                     };
 
-                    if piece_idx == 0 {
-                        seq_starts.push(kmers_in_batch);
-                    }
-                    batch_seqs.push_seq(piece);
-                    kmers_in_batch += kmers_in_n(k, piece.len());
-                    chars_in_batch += piece.len();
+                    batch.push(piece, piece_idx > 0);
 
-                    if chars_in_batch >= b {
-                        let batch = QueryBatch {
-                            seqs: batch_seqs,
-                            batch_id,
-                            sequence_starts: seq_starts,
-                        };
+                    if batch.len() >= b {
+                        let next_batch_id = batch.batch_id + 1;
                         batch_send.send(batch).unwrap();
 
-                        // Reset the batch and tracking variables
-                        batch_seqs = SeqDB::new();
-                        seq_starts = Vec::new();
-                        chars_in_batch = 0;
-                        kmers_in_batch = 0;
-                        batch_id += 1;
+                        batch = QueryBatch::new(next_batch_id, index.k());
                     }
                 }
             }
 
-            eprintln!("Remaining seq starts: {:?}", seq_starts);
-
             // Push the last remaining non-full batch. Can be empty but that's ok.
-            let batch = QueryBatch {
-                seqs: batch_seqs,
-                batch_id,
-                sequence_starts: seq_starts,
-            };
             batch_send.send(batch).unwrap();
 
             eprintln!("All input read");
