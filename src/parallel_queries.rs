@@ -288,7 +288,8 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
         });
 
         let writer_handle = s.spawn(|| {
-            let mut stdout = BufWriter::new(std::io::stdout());
+            // 128kb = 2^17 byte buffer
+            let mut stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
             output_thread(output_recv, &mut stdout) // Returns number of k-mers processed
         });
 
