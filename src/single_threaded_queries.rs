@@ -13,7 +13,7 @@ pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers){
         let mut run_color: Option<usize> = None;
         for (i, color) in index.lookup_kmers(rec.seq).enumerate() {
             if let Some(color) = color { // This k-mer has a color
-                if let Some(s) = run_start { 
+                if let Some(s) = run_start {
                     // Currently on a run
                     if color == run_color.unwrap() {
                         // Ok. Extending the run
@@ -23,6 +23,10 @@ pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers){
                         run_start = Some(i);
                         run_color = Some(color);
                     }
+                } else {
+                    // Currently not on a run -> open a run
+                    run_start = Some(i);
+                    run_color = Some(color);
                 }
             } else { // This k-mer does not have a color
                 // Terminate the current run, if exists
