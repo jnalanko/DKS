@@ -88,6 +88,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
                     let mut starts_ptr = min_batch.sequence_starts.iter().peekable();
                     for (i, color) in min_batch.result.iter().enumerate() {
                         while starts_ptr.peek().is_some_and(|&&s| s == i) {
+                            starts_ptr.next();
                             cur_seq_id += 1;
                             if cur_seq_id == 0 {
                                 write!(out, "{cur_seq_id}").unwrap();
@@ -104,7 +105,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
 
                     // In the last batch we can have sequence starts one past the end of the answers.
                     // In that case they are empty sequences. Print one line for each. 
-                    while let Some(&&s) = starts_ptr.peek() {
+                    for &s in starts_ptr {
                         assert!(s == min_batch.result.len());
                         cur_seq_id += 1;
                         if cur_seq_id == 0 {
