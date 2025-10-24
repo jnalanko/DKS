@@ -9,14 +9,14 @@ struct QueryBatch {
     seqs: SeqDB,
 
     batch_id: usize,
-    sequence_breaks: Vec<usize> // Source sequence changes at these answer indices 
+    sequence_starts: Vec<usize> // Source sequence changes at these answer indices 
 }
 
 struct ProcessedQueryBatch {
     result: Vec<Option<usize>>,
 
     batch_id: usize,
-    sequence_breaks: Vec<usize> 
+    sequence_starts: Vec<usize> 
 }
 
 impl QueryBatch {
@@ -42,33 +42,7 @@ impl QueryBatch {
         ProcessedQueryBatch{
             result: color_ids,
             batch_id: self.batch_id,
-            sequence_breaks: self.sequence_breaks,
-        }
-    }
-}
-
-impl ProcessedQueryBatch {
-    fn write<W: Write>(&self, out: &mut W) {
-        let mut seq_break_idx = 0;
-
-        for (i, color) in self.result.iter().enumerate() {
-
-            while seq_break_idx < self.sequence_breaks.len() && self.sequence_breaks[seq_break_idx] == i {
-                out.write_all(b"\n").unwrap();
-                seq_break_idx += 1;
-            }
-
-            match color {
-                Some(color) => write!(out, "{color} ").unwrap(), // Todo: new space after last one
-                None => write!(out, "X ").unwrap(), // Todo: new space after last one
-            };
-        }
-
-        // Add possible sequence breaks at the end
-        while seq_break_idx < self.sequence_breaks.len() {
-            assert!(self.sequence_breaks[seq_break_idx] == self.result.len());
-            out.write_all(b"\n").unwrap();
-            seq_break_idx += 1;
+            sequence_starts: self.sequence_starts,
         }
     }
 }
@@ -101,6 +75,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
     let mut batch_buffer = std::collections::BinaryHeap::<Reverse<ProcessedQueryBatch>>::new(); // Reverse makes it a min heap
     let mut n_kmers_processed = 0_usize;
     let mut next_batch_id = 0_usize;
+    let mut cur_seq_id = -1_isize;
 
     while let Ok(batch) = query_results.recv() {
         batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
@@ -110,7 +85,35 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
                 if min_batch.batch_id == next_batch_id {
-                    min_batch.write(out);
+                    let mut starts_ptr = min_batch.sequence_starts.iter().peekable();
+                    for (i, color) in min_batch.result.iter().enumerate() {
+                        while starts_ptr.peek().is_some_and(|&&s| s == i) {
+                            cur_seq_id += 1;
+                            if cur_seq_id == 0 {
+                                write!(out, "{cur_seq_id}").unwrap();
+                            } else {
+                                write!(out, "\n{cur_seq_id}").unwrap();
+                            }
+                        }
+
+                        match color {
+                            Some(color) => write!(out, " {color}").unwrap(),
+                            None => write!(out, " X").unwrap(),
+                        };
+                    }
+
+                    // In the last batch we can have sequence starts one past the end of the answers.
+                    // In that case they are empty sequences. Print one line for each. 
+                    while let Some(&&s) = starts_ptr.peek() {
+                        assert!(s == min_batch.result.len());
+                        cur_seq_id += 1;
+                        if cur_seq_id == 0 {
+                            write!(out, "{cur_seq_id}").unwrap();
+                        } else {
+                            write!(out, "\n{cur_seq_id}").unwrap();
+                        }
+                    }
+
                     n_kmers_processed += min_batch.result.len();
                     batch_buffer.pop();
                     next_batch_id += 1;
@@ -122,6 +125,8 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             }
         }
     }
+
+    write!(out, "\n"); // One last newline to finish the last line
 
     //todo!(); // Need to add a newline after the very last seq
     n_kmers_processed
@@ -145,7 +150,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
             let mut batch_seqs = SeqDB::new();
             let mut chars_in_batch = 0_usize;
             let mut kmers_in_batch = 0_usize;
-            let mut seq_breaks = Vec::<usize>::new();
+            let mut seq_starts = Vec::<usize>::new();
             let mut batch_id = 0_usize;
             let mut n_seqs_read = 0_usize;
 
@@ -177,7 +182,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                 if n < k {
                     // No full k-mers in this sequence
                     if n_seqs_read > 1 {
-                        seq_breaks.push(kmers_in_batch);
+                        seq_starts.push(kmers_in_batch);
                     }
                     continue;
                 }
@@ -203,9 +208,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                     };
 
 
-                    if piece_idx == 0 && n_seqs_read > 1 {
-                        seq_breaks.push(kmers_in_batch);
-                    }
+                    seq_starts.push(kmers_in_batch);
                     batch_seqs.push_seq(piece);
                     kmers_in_batch += kmers_in_n(k, piece.len());
                     chars_in_batch += piece.len();
@@ -214,13 +217,13 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                         let batch = QueryBatch {
                             seqs: batch_seqs,
                             batch_id,
-                            sequence_breaks: seq_breaks,
+                            sequence_starts: seq_starts,
                         };
                         batch_send.send(batch).unwrap();
 
                         // Reset the batch and tracking variables
                         batch_seqs = SeqDB::new();
-                        seq_breaks = Vec::new();
+                        seq_starts = Vec::new();
                         chars_in_batch = 0;
                         kmers_in_batch = 0;
                         batch_id += 1;
@@ -228,14 +231,13 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                 }
             }
 
-            eprintln!("Remaining seq breaks: {:?}", seq_breaks);
+            eprintln!("Remaining seq starts: {:?}", seq_starts);
 
-            // Push the last remaining non-full batch
-            seq_breaks.push(kmers_in_batch); // Add a sequence break at the end to get a final newline
+            // Push the last remaining non-full batch. Can be empty but that's ok.
             let batch = QueryBatch {
                 seqs: batch_seqs,
                 batch_id,
-                sequence_breaks: seq_breaks,
+                sequence_starts: seq_starts,
             };
             batch_send.send(batch).unwrap();
 
