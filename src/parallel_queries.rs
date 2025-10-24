@@ -160,7 +160,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
 }
 
 // Batch size is in nucleotides (= bytes)
-pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColoredKmers, batch_size: usize) {
+pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColoredKmers, batch_size: usize) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 

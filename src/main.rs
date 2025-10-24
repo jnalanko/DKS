@@ -55,6 +55,15 @@ pub enum Subcommands {
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
     },
+
+    #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
+    LookupDebug {
+        #[arg(help = "A file with one fasta/fastq filename per line", short, long, required = true)]
+        query: PathBuf,
+
+        #[arg(help = "Path to the index file", short, long, required = true)]
+        index: PathBuf,
+    },
 }
 
 fn main() {
@@ -113,7 +122,19 @@ fn main() {
             let index = SingleColoredKmers::load(&mut index_input);
             eprintln!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             eprintln!("Running queries from {} ...", query_path.display());
-            parallel_queries::lookup_parallel(n_threads, &query_path, index, 51);
+            parallel_queries::lookup_parallel(n_threads, &query_path, &index, 51);
+
+        },
+
+        Subcommands::LookupDebug{query: query_path, index: index_path} => {
+            eprintln!("Loading the index ...");
+            let mut index_input = BufReader::new(File::open(index_path).unwrap());
+
+            let index_loading_start = std::time::Instant::now();
+            let index = SingleColoredKmers::load(&mut index_input);
+            eprintln!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
+            eprintln!("Running query debug implementation for {} ...", query_path.display());
+            single_threaded_queries::lookup_single_threaded(&query_path, &index);
 
         }
     } 

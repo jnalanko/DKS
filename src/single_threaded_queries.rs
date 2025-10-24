@@ -4,7 +4,7 @@ use jseqio::reader::DynamicFastXReader;
 
 use crate::single_colored_kmers::SingleColoredKmers;
 
-fn lookup_single_threaded(query_path: &Path, index: SingleColoredKmers){
+pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers){
     let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
     let mut seq_id = 0_usize;
 
