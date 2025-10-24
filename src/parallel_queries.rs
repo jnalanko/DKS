@@ -50,6 +50,7 @@ impl QueryBatch {
 impl ProcessedQueryBatch {
     fn write<W: Write>(&self, out: &mut W) {
         let mut seq_break_idx = 0;
+
         for (i, color) in self.result.iter().enumerate() {
 
             while seq_break_idx < self.sequence_breaks.len() && self.sequence_breaks[seq_break_idx] == i {
@@ -61,6 +62,13 @@ impl ProcessedQueryBatch {
                 Some(color) => write!(out, "{color} ").unwrap(), // Todo: new space after last one
                 None => write!(out, "X ").unwrap(), // Todo: new space after last one
             };
+        }
+
+        if self.result.is_empty() { // Might need to add sequence breaks at index 0. This happens at the last empty batch
+            for &br in self.sequence_breaks.iter() {
+                assert!(br == 0);
+                out.write_all(b"\n").unwrap();
+            }
         }
     }
 }
@@ -115,7 +123,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
         }
     }
 
-    todo!(); // Need to add a newline after the very last seq
+    //todo!(); // Need to add a newline after the very last seq
     n_kmers_processed
     // Channel is dropped (= closed) here.
 }
@@ -222,8 +230,12 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: SingleColored
                     batch_id,
                     sequence_breaks: seq_breaks,
                 };
+                batch_id += 1;
                 batch_send.send(batch).unwrap();
             }
+
+            // Push one more empty batch with a sequence break to get a newline at the end
+            batch_send.send(QueryBatch{seqs: SeqDB::new(), batch_id, sequence_breaks: vec![0]}).unwrap();
 
             eprintln!("All input read");
             drop(batch_send); // Close the channel
