@@ -1,9 +1,8 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{cmp::{max, Reverse}, fs::File, io::{BufRead, BufReader, BufWriter, Write}, ops::Range, path::{Path, PathBuf}, sync::Arc, thread::ScopedJoinHandle};
+use std::{fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf};
 use bitvec::prelude::*;
-use clap::{builder::PossibleValuesParser, Parser, Subcommand};
-use indicatif::HumanBytes;
+use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
 use sbwt::{BitPackedKmerSorting, BitPackedKmerSortingMem};
 use single_colored_kmers::SingleColoredKmers;

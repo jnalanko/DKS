@@ -1,4 +1,4 @@
-use std::{cmp::{max, min, Reverse}, io::{BufWriter, Write}, ops::Range, path::Path};
+use std::{cmp::{max, Reverse}, io::{BufWriter, Write}, path::Path};
 
 use jseqio::{reader::DynamicFastXReader, seq_db::SeqDB};
 
