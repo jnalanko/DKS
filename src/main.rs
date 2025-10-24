@@ -11,6 +11,7 @@ use single_colored_kmers::SingleColoredKmers;
 mod single_colored_kmers;
 mod io;
 mod parallel_queries;
+mod single_threaded_queries;
 
 
 #[derive(Parser)]
