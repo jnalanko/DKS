@@ -40,7 +40,7 @@ pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers){
 
         // Done processing the sequence. If there is still an open run, write it
         if let (Some(s), Some(c)) = (run_start, run_color) {
-            println!("{seq_id}\t{}\t{}\t{}", s, rec.seq.len()-1, c);
+            println!("{seq_id}\t{}\t{}\t{}", s, rec.seq.len()-index.k(), c);
         } 
 
         seq_id += 1;
