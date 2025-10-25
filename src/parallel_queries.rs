@@ -312,6 +312,7 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
 
 #[cfg(test)]
 mod tests {
+    use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream, StreamingIndex};
 
     use crate::{parallel_queries::lookup_parallel, single_colored_kmers::SingleColoredKmers};
@@ -363,27 +364,51 @@ mod tests {
 
     #[test]
     fn build_testcase() {
-        // Generate 1000 DNA sequences as byte slices, of random lengths between 1 and 100
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(124);
+
         let mut sequences: Vec<Vec<u8>> = Vec::new();
-        for _ in 0..1000 {
-            let len = rng.gen_range(1..=100);
-            let seq: Vec<u8> = (0..len).map(|_| {
-                let base = rng.gen_range(0..4);
-                match base {
+
+        let k = 9;
+
+        // Generate 1000 DNA sequences as byte slices, of random lengths between 1 and 100.
+        // Each k-mer in the sequences must be unique! The following algorithm ensures that,
+        // but it may loop forever if we get unlucky. The RNG seed is chosen so that this does not happen.
+        let mut existing_kmers = std::collections::HashSet::new();
+        for _i in 0..1000 {
+            let len = (rng.next_u64() % 100 + 1) as usize;
+            let mut seq: Vec<u8> = Vec::new();
+            while seq.len() < len {
+                let base = rng.next_u64() % 4;
+                let nucleotide = match base {
                     0 => b'A',
                     1 => b'C',
                     2 => b'G',
                     _ => b'T',
+                };
+                seq.push(nucleotide);
+
+                // Ensure the last k-mer is unique
+                while seq.len() >= k && existing_kmers.contains(&seq[seq.len()-k..]) {
+                    // K-mer already exists, remove last nucleotide and try again
+                    seq.pop();
+                    let nucleotide = match rng.next_u64() % 4 {
+                        0 => b'A',
+                        1 => b'C',
+                        2 => b'G',
+                        _ => b'T',
+                    };
+                    seq.push(nucleotide);
                 }
-            }).collect();
+                if seq.len() >= k {
+                    existing_kmers.insert(seq[seq.len()-k..].to_vec());
+                }
+            }
             sequences.push(seq);
         }
 
-        // Build SBWT
-        let k = 5;
+        eprintln!("{} existing k-mers", existing_kmers.len());
 
+        // Build SBWT
         // Use in-memory construction
         let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
             .add_rev_comp(false)
@@ -401,9 +426,9 @@ mod tests {
         // Generate 1000 random queries of lengths between 1 and 100
         let mut queries: Vec<Vec<u8>> = Vec::new();
         for _ in 0..1000 {
-            let len = rng.gen_range(1..=100);
+            let len = rng.next_u64() % 100 + 1;
             let query: Vec<u8> = (0..len).map(|_| {
-                let base = rng.gen_range(0..4);
+                let base = rng.next_u64() % 4;
                 match base {
                     0 => b'A',
                     1 => b'C',
