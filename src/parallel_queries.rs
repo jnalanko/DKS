@@ -370,7 +370,7 @@ mod tests {
 
         let k = 7;
 
-        // Generate 1000 DNA sequences as byte slices, of random lengths between 1 and 100.
+        // Generate DNA sequences of random length. 
         // Each k-mer in the sequences must be unique! The following algorithm ensures that,
         // but it may loop forever if we get unlucky. The RNG seed is chosen so that this does not happen.
         let mut kmer_to_color = std::collections::HashMap::<Vec<u8>, usize>::new();
@@ -423,9 +423,10 @@ mod tests {
 
         // Generate 1000 random queries of lengths between 1 and 100
         let mut queries: Vec<Vec<u8>> = Vec::new();
-        for _ in 0..1000 {
+        let n_queries = 1000;
+        for query_id in 0..n_queries {
             let len = rng.next_u64() % 100 + 1;
-            let query: Vec<u8> = (0..len).map(|_| {
+            let mut query: Vec<u8> = (0..len).map(|_| {
                 let base = rng.next_u64() % 4;
                 match base {
                     0 => b'A',
@@ -434,6 +435,11 @@ mod tests {
                     _ => b'T',
                 }
             }).collect();
+
+            if query_id == n_queries - 1 {
+                // Make sure the last query contains a known k-mer so that the color last run remains open
+                query.extend_from_slice(kmer_to_color.keys().next().unwrap());
+            }
             queries.push(query);
         }
 
