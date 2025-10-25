@@ -134,7 +134,11 @@ fn main() {
             eprintln!("Running queries from {} ...", query_path.display());
             let reader = DynamicFastXReader::from_file(&query_path).unwrap();
             let reader = DynamicFastXReaderWrapper { inner: reader }; 
-            parallel_queries::lookup_parallel(n_threads, reader, &index, 5001);
+
+            // 128kb = 2^17 byte buffer
+            let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
+
+            parallel_queries::lookup_parallel(n_threads, reader, &index, 5001, stdout);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {

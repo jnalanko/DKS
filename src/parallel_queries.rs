@@ -208,7 +208,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
 }
 
 // Batch size is in nucleotides (= bytes)
-pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize) {
+pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize, mut out: impl Write + Send) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
@@ -274,10 +274,8 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
         });
 
         let writer_handle = s.spawn(|| {
-            // 128kb = 2^17 byte buffer
-            let mut stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
-            let n_kmers = output_thread(output_recv, &mut stdout); // Returns number of k-mers processed
-            stdout.flush().unwrap(); // They say this needs to be done because errors during drop are ignored
+            let n_kmers = output_thread(output_recv, &mut out); // Returns number of k-mers processed
+            out.flush().unwrap(); // They say this needs to be done because errors during drop are ignored
             n_kmers
         });
 
@@ -314,7 +312,7 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
 
 #[cfg(test)]
 mod tests {
-    use sbwt::{BitPackedKmerSortingMem, SeqStream};
+    use sbwt::{BitPackedKmerSortingMem, SeqStream, StreamingIndex};
 
     use crate::{parallel_queries::lookup_parallel, single_colored_kmers::SingleColoredKmers};
 
@@ -334,6 +332,29 @@ mod tests {
             if self.pos == 0 {
                 self.pos = 1;
                 Some(&self.seq)
+            } else {
+                None
+            }
+        }
+    }
+
+    struct MultiSeqStream {
+        seqs: Vec<Vec<u8>>,
+        pos: usize,
+    }
+
+    impl MultiSeqStream {
+        fn new(seqs: Vec<Vec<u8>>) -> Self {
+            Self { seqs, pos: 0 }
+        }
+    }
+
+    impl SeqStream for MultiSeqStream {
+        fn stream_next(&mut self) -> Option<&[u8]> {
+            if self.pos < self.seqs.len() {
+                let ret = &self.seqs[self.pos];
+                self.pos += 1;
+                Some(ret)
             } else {
                 None
             }
@@ -393,7 +414,11 @@ mod tests {
             queries.push(query);
         }
 
-        lookup_parallel(2, query_path, index, 50);
+        let out_vec = Vec::<u8>::new();
+        let mut out = std::io::Cursor::new(out_vec);
+        lookup_parallel(2, MultiSeqStream::new(queries), &sck, 50, &mut out);
+
+        eprintln!("Output:\n{}", String::from_utf8(out.into_inner()).unwrap());
 
     }
 }
