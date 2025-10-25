@@ -312,6 +312,8 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream, StreamingIndex};
 
@@ -363,7 +365,7 @@ mod tests {
     }
 
     #[test]
-    fn build_testcase() {
+    fn random_test() {
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(125);
 
         let mut sequences: Vec<Vec<u8>> = Vec::new();
@@ -447,12 +449,33 @@ mod tests {
         let mut out = std::io::Cursor::new(out_vec);
         lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, 50, &mut out);
 
-        eprintln!("Output:\n{}", String::from_utf8(out.into_inner()).unwrap());
-
-        for (i, kmer) in queries[997].windows(k).enumerate() {
-            let expected_color = kmer_to_color.get(kmer);
-            eprintln!("{} {:?}", i, expected_color);
+        // Parse output tsv line by line
+        let output_str = String::from_utf8(out.into_inner()).unwrap();
+        let output_lines = output_str.lines();
+        // For each query, the starting positions and colors of found k-mers
+        let mut found_kmers: Vec::<Vec::<(usize,usize)>> = vec![Vec::new(); queries.len()]; 
+        for line in output_lines {
+            let mut fields = line.split('\t');
+            let seq_id: usize = fields.next().unwrap().parse().unwrap();
+            let start: usize = fields.next().unwrap().parse().unwrap();
+            let end: usize = fields.next().unwrap().parse().unwrap();
+            let color: usize = fields.next().unwrap().parse().unwrap();
+            for i in start..=end {
+                found_kmers[seq_id].push((i, color));
+            }
         }
+
+        // Verify against known answers
+        for query_id in 0..queries.len() {
+            let mut true_answer = Vec::<(usize, usize)>::new();
+            for (i, kmer) in queries[query_id].windows(k).enumerate() {
+                if let Some(color) = kmer_to_color.get(kmer) {
+                    true_answer.push((i, *color));
+                }
+            }
+            assert_eq!(true_answer, found_kmers[query_id]);
+        }
+
 
     }
 }
