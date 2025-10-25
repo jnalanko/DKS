@@ -364,8 +364,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn random_test() {
+    fn random_test(batch_size: usize) {
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(125);
 
         let mut sequences: Vec<Vec<u8>> = Vec::new();
@@ -447,7 +446,7 @@ mod tests {
 
         let out_vec = Vec::<u8>::new();
         let mut out = std::io::Cursor::new(out_vec);
-        lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, 50, &mut out);
+        lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, &mut out);
 
         // Parse output tsv line by line
         let output_str = String::from_utf8(out.into_inner()).unwrap();
@@ -477,7 +476,12 @@ mod tests {
             eprintln!("{:?}", found_kmers[query_id]);
             assert_eq!(true_answer, found_kmers[query_id]);
         }
+    }
 
-
+    #[test]
+    fn run_random_tests() {
+        random_test(7);
+        random_test(8);
+        random_test(1000);
     }
 }
