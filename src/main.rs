@@ -4,6 +4,7 @@ use std::{fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf};
 use bitvec::prelude::*;
 use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
+use jseqio::reader::DynamicFastXReader;
 use sbwt::{BitPackedKmerSorting, BitPackedKmerSortingMem};
 use single_colored_kmers::SingleColoredKmers;
 
@@ -65,6 +66,16 @@ pub enum Subcommands {
     },
 }
 
+struct DynamicFastXReaderWrapper {
+    inner: DynamicFastXReader,
+}
+
+impl sbwt::SeqStream for DynamicFastXReaderWrapper{
+    fn stream_next(&mut self) -> Option<&[u8]> {
+        self.inner.read_next().unwrap().map(|x| x.seq)
+    }
+}
+
 fn main() {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info")
@@ -121,8 +132,9 @@ fn main() {
             let index = SingleColoredKmers::load(&mut index_input);
             eprintln!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             eprintln!("Running queries from {} ...", query_path.display());
-            parallel_queries::lookup_parallel(n_threads, &query_path, &index, 5001);
-
+            let reader = DynamicFastXReader::from_file(&query_path).unwrap();
+            let reader = DynamicFastXReaderWrapper { inner: reader }; 
+            parallel_queries::lookup_parallel(n_threads, reader, &index, 5001);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {

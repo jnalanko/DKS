@@ -208,11 +208,10 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
 }
 
 // Batch size is in nucleotides (= bytes)
-pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColoredKmers, batch_size: usize) {
+pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
-    let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
     let query_start = std::time::Instant::now();
 
     let n_kmers_processed = std::thread::scope(|s| {
@@ -222,8 +221,7 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
             // Reader thread that pushes batches for workers
 
             let mut batch = QueryBatch::new(0, index.k()); // Initialize an empty batch
-            while let Some(rec) = reader.read_next().unwrap() {
-                let seq = rec.seq; 
+            while let Some(seq) = queries.stream_next() {
                 let n = seq.len();
                 let b = batch_size;
                 let k = index.k();
@@ -253,9 +251,9 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
                     let start = b*piece_idx - (k-1)*pieces_before;
                     let piece = if piece_idx < m-1 {
                         // Not the last piece: has full length b
-                        &rec.seq[start..start+b]
+                        &seq[start..start+b]
                     } else {
-                        &rec.seq[start..] // Until the end (can have length shorter than b)
+                        &seq[start..] // Until the end (can have length shorter than b)
                     };
 
                     batch.push(piece, piece_idx > 0);
@@ -312,4 +310,90 @@ pub fn lookup_parallel(n_threads: usize, query_path: &Path, index: &SingleColore
     eprintln!("{} k-mers queried in {} seconds (excluding index loading time)", n_kmers_processed, query_duration.as_secs());
     eprintln!("Query time per k-mer: {} nanoseconds", query_duration.as_nanos() as f64 / n_kmers_processed as f64);
 
+}
+
+#[cfg(test)]
+mod tests {
+    use sbwt::{BitPackedKmerSortingMem, SeqStream};
+
+    use crate::{parallel_queries::lookup_parallel, single_colored_kmers::SingleColoredKmers};
+
+    struct SingleSeqStream {
+        seq: Vec<u8>,
+        pos: usize,
+    }
+
+    impl SingleSeqStream {
+        fn new(seq: Vec<u8>) -> Self {
+            Self { seq, pos: 0 }
+        }
+    }
+
+    impl SeqStream for SingleSeqStream {
+        fn stream_next(&mut self) -> Option<&[u8]> {
+            if self.pos == 0 {
+                self.pos = 1;
+                Some(&self.seq)
+            } else {
+                None
+            }
+        }
+    }
+
+    #[test]
+    fn build_testcase() {
+        // Generate 1000 DNA sequences as byte slices, of random lengths between 1 and 100
+        use rand::Rng;
+        let mut rng = rand::thread_rng();
+        let mut sequences: Vec<Vec<u8>> = Vec::new();
+        for _ in 0..1000 {
+            let len = rng.gen_range(1..=100);
+            let seq: Vec<u8> = (0..len).map(|_| {
+                let base = rng.gen_range(0..4);
+                match base {
+                    0 => b'A',
+                    1 => b'C',
+                    2 => b'G',
+                    _ => b'T',
+                }
+            }).collect();
+            sequences.push(seq);
+        }
+
+        // Build SBWT
+        let k = 5;
+
+        // Use in-memory construction
+        let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
+            .add_rev_comp(false)
+            .k(k)
+            .build_lcs(true)
+            .n_threads(3)
+            .precalc_length(3)
+            .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
+        .run_from_vecs(&sequences);
+        let lcs = lcs.unwrap();
+
+        let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
+        let sck = SingleColoredKmers::new(sbwt, lcs, seqstreams, 3);
+
+        // Generate 1000 random queries of lengths between 1 and 100
+        let mut queries: Vec<Vec<u8>> = Vec::new();
+        for _ in 0..1000 {
+            let len = rng.gen_range(1..=100);
+            let query: Vec<u8> = (0..len).map(|_| {
+                let base = rng.gen_range(0..4);
+                match base {
+                    0 => b'A',
+                    1 => b'C',
+                    2 => b'G',
+                    _ => b'T',
+                }
+            }).collect();
+            queries.push(query);
+        }
+
+        lookup_parallel(2, query_path, index, 50);
+
+    }
 }
