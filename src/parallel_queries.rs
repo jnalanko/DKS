@@ -473,6 +473,8 @@ mod tests {
                     true_answer.push((i, *color));
                 }
             }
+            dbg!(&true_answer);
+            dbg!(&found_kmers[query_id]);
             assert_eq!(true_answer, found_kmers[query_id]);
         }
 
