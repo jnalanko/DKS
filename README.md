@@ -71,7 +71,7 @@ So in our example, for the first query sequence (sequence 0), k-mers 0-0 have mu
 
 In this benchmark, all chromosomes of the human reference genome GRCh38.p14 were indexed, such that each chromosome received a distinct color (24 distinct colors total). Then, a full human genome assembly was queried against the index. 
 
-![Benchmark plots](benchmark_plot/benchmarks_combined.png)
+![Benchmark plots](benchmark/benchmarks_combined.png)
 
 Theoretical ideal parallel speedups are shown with dashed lines. The size of the index on disk was 8.8 GiB for k = 31 and 10.3 GiB for k = 63. The peak memory during query was 9.0 GiB for k = 31 and 10.6 GiB for k = 63. The experiment was run on a SLURM cluster on a node with an AMD EPYC 7452 32-Core processor clocked at 2350 MHz with cache sizes 32K, 512K and 16384K, and 500GB of RAM (detailed specs unknown).
 
