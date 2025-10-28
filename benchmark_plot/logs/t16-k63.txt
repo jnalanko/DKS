@@ -1,0 +1,59 @@
+[2025-10-27T17:00:21Z INFO  sbwt::bitpacked_kmer_sorting] Splitting k-mers into bins
+[2025-10-27T17:00:21Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Splitting k-mers into 64 bins
+[2025-10-27T17:00:21Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Bin buffer size: 262144
+[2025-10-27T17:03:30Z INFO  sbwt::bitpacked_kmer_sorting] Total size of k-mer bins: 100236759744 bytes (93.4 GiB)
+[2025-10-27T17:03:30Z INFO  sbwt::bitpacked_kmer_sorting] Sorting and deduplicating bins
+[2025-10-27T17:03:30Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Sorting k-mer bins
+[2025-10-27T17:09:31Z INFO  sbwt::bitpacked_kmer_sorting] Total size of deduplicated k-mer bins: 88624321536 bytes (82.5 GiB)
+[2025-10-27T17:14:14Z INFO  sbwt::bitpacked_kmer_sorting] Disk peak space during concatenation: 92052443696 bytes (85.7 GiB)
+[2025-10-27T17:14:14Z INFO  sbwt::bitpacked_kmer_sorting] 5539020096 distinct k-mers found
+[2025-10-27T17:14:14Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Identifying k-mers without predecessors
+[2025-10-27T17:21:26Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Building all prefixes of source nodes
+[2025-10-27T17:23:44Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Sorting and deduplicating dummies
+[2025-10-27T17:23:44Z INFO  sbwt::bitpacked_kmer_sorting] 48508 dummy nodes needed
+[2025-10-27T17:23:44Z INFO  sbwt::bitpacked_kmer_sorting] Writing dummies to disk
+[2025-10-27T17:23:44Z INFO  sbwt::bitpacked_kmer_sorting] Temporary disk space peak: 100236759744 bytes (93.4 GiB)
+[2025-10-27T17:23:44Z INFO  sbwt::bitpacked_kmer_sorting] Constructing the sbwt subset sequence
+[2025-10-27T17:33:52Z INFO  sbwt::bitpacked_kmer_sorting] Building the subset rank structure
+[2025-10-27T17:33:54Z INFO  DKS] Marking colors
+[2025-10-27T17:33:54Z INFO  DKS::single_colored_kmers] Marking colors
+[2025-10-27T17:33:54Z INFO  DKS::single_colored_kmers] Processing up to 2n bases, where n is the number of bases in the input.
+[2025-10-27T17:34:04Z INFO  DKS::single_colored_kmers] 958550000 bases processed (95.85 Mbases/sec)
+[2025-10-27T17:34:14Z INFO  DKS::single_colored_kmers] 1864820000 bases processed (93.24 Mbases/sec)
+[2025-10-27T17:34:24Z INFO  DKS::single_colored_kmers] 2775510000 bases processed (92.51 Mbases/sec)
+[2025-10-27T17:34:34Z INFO  DKS::single_colored_kmers] 3729117074 bases processed (93.22 Mbases/sec)
+[2025-10-27T17:34:44Z INFO  DKS::single_colored_kmers] 4558662328 bases processed (91.17 Mbases/sec)
+[2025-10-27T17:34:54Z INFO  DKS::single_colored_kmers] 5420791018 bases processed (90.34 Mbases/sec)
+[2025-10-27T17:35:04Z INFO  DKS::single_colored_kmers] 6164820932 bases processed (88.07 Mbases/sec)
+[2025-10-27T17:35:14Z INFO  DKS::single_colored_kmers] 6376415188 bases processed (79.70 Mbases/sec)
+[2025-10-27T17:35:24Z INFO  DKS::single_colored_kmers] 6511906716 bases processed (72.35 Mbases/sec)
+[2025-10-27T17:35:34Z INFO  DKS::single_colored_kmers] 6579236716 bases processed (65.79 Mbases/sec)
+[2025-10-27T17:35:35Z INFO  DKS::single_colored_kmers] Bitpacking color id array
+[2025-10-27T17:36:36Z INFO  DKS::single_colored_kmers] Marked 5489282576 single-colored k-mers
+[2025-10-27T17:36:36Z INFO  DKS::single_colored_kmers] Marked 49737520 multi-colored k-mers
+[2025-10-27T17:36:36Z INFO  DKS::single_colored_kmers] 0 k-mers left not marked
+[2025-10-27T17:36:36Z INFO  DKS] Writing to temp/chromosomes-k63.dks
+[2025-10-27T17:36:48Z INFO  DKS] Index size on disk: 10.3 GiB
+	Command being timed: "DKS build -i chromosomes_fof.txt -o temp/chromosomes-k63.dks --temp-dir temp -k 63 -t 16"
+	User time (seconds): 3896.88
+	System time (seconds): 730.96
+	Percent of CPU this job got: 211%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 36:29.02
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 18014976
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 12493179
+	Voluntary context switches: 31949
+	Involuntary context switches: 49880
+	Swaps: 0
+	File system inputs: 59459872
+	File system outputs: 563604992
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

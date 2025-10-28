@@ -1,0 +1,100 @@
+[2025-10-27T14:49:08Z INFO  sbwt::bitpacked_kmer_sorting] Splitting k-mers into bins
+[2025-10-27T14:49:08Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Splitting k-mers into 64 bins
+[2025-10-27T14:49:08Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Bin buffer size: 2097152
+[2025-10-27T14:59:34Z INFO  sbwt::bitpacked_kmer_sorting] Total size of k-mer bins: 100236759744 bytes (93.4 GiB)
+[2025-10-27T14:59:34Z INFO  sbwt::bitpacked_kmer_sorting] Sorting and deduplicating bins
+[2025-10-27T14:59:34Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Sorting k-mer bins
+[2025-10-27T15:05:59Z INFO  sbwt::bitpacked_kmer_sorting] Total size of deduplicated k-mer bins: 88624321536 bytes (82.5 GiB)
+[2025-10-27T15:10:20Z INFO  sbwt::bitpacked_kmer_sorting] Disk peak space during concatenation: 92052443696 bytes (85.7 GiB)
+[2025-10-27T15:10:20Z INFO  sbwt::bitpacked_kmer_sorting] 5539020096 distinct k-mers found
+[2025-10-27T15:10:20Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Identifying k-mers without predecessors
+[2025-10-27T15:17:59Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Building all prefixes of source nodes
+[2025-10-27T15:20:12Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Sorting and deduplicating dummies
+[2025-10-27T15:20:12Z INFO  sbwt::bitpacked_kmer_sorting] 48508 dummy nodes needed
+[2025-10-27T15:20:12Z INFO  sbwt::bitpacked_kmer_sorting] Writing dummies to disk
+[2025-10-27T15:20:12Z INFO  sbwt::bitpacked_kmer_sorting] Temporary disk space peak: 100236759744 bytes (93.4 GiB)
+[2025-10-27T15:20:12Z INFO  sbwt::bitpacked_kmer_sorting] Constructing the sbwt subset sequence
+[2025-10-27T15:30:19Z INFO  sbwt::bitpacked_kmer_sorting] Building the subset rank structure
+[2025-10-27T15:30:20Z INFO  DKS] Marking colors
+[2025-10-27T15:30:20Z INFO  DKS::single_colored_kmers] Marking colors
+[2025-10-27T15:30:21Z INFO  DKS::single_colored_kmers] Processing up to 2n bases, where n is the number of bases in the input.
+[2025-10-27T15:30:31Z INFO  DKS::single_colored_kmers] 125200000 bases processed (12.52 Mbases/sec)
+[2025-10-27T15:30:41Z INFO  DKS::single_colored_kmers] 278370000 bases processed (13.92 Mbases/sec)
+[2025-10-27T15:30:51Z INFO  DKS::single_colored_kmers] 408210000 bases processed (13.61 Mbases/sec)
+[2025-10-27T15:31:01Z INFO  DKS::single_colored_kmers] 516190000 bases processed (12.90 Mbases/sec)
+[2025-10-27T15:31:11Z INFO  DKS::single_colored_kmers] 646020000 bases processed (12.92 Mbases/sec)
+[2025-10-27T15:31:21Z INFO  DKS::single_colored_kmers] 796010000 bases processed (13.27 Mbases/sec)
+[2025-10-27T15:31:31Z INFO  DKS::single_colored_kmers] 928860000 bases processed (13.27 Mbases/sec)
+[2025-10-27T15:31:41Z INFO  DKS::single_colored_kmers] 1054491528 bases processed (13.18 Mbases/sec)
+[2025-10-27T15:31:51Z INFO  DKS::single_colored_kmers] 1186031528 bases processed (13.18 Mbases/sec)
+[2025-10-27T15:32:01Z INFO  DKS::single_colored_kmers] 1317751528 bases processed (13.18 Mbases/sec)
+[2025-10-27T15:32:11Z INFO  DKS::single_colored_kmers] 1429611528 bases processed (13.00 Mbases/sec)
+[2025-10-27T15:32:21Z INFO  DKS::single_colored_kmers] 1559191528 bases processed (12.99 Mbases/sec)
+[2025-10-27T15:32:31Z INFO  DKS::single_colored_kmers] 1690891528 bases processed (13.01 Mbases/sec)
+[2025-10-27T15:32:41Z INFO  DKS::single_colored_kmers] 1821613446 bases processed (13.01 Mbases/sec)
+[2025-10-27T15:32:51Z INFO  DKS::single_colored_kmers] 1951947024 bases processed (13.01 Mbases/sec)
+[2025-10-27T15:33:01Z INFO  DKS::single_colored_kmers] 2082927024 bases processed (13.02 Mbases/sec)
+[2025-10-27T15:33:11Z INFO  DKS::single_colored_kmers] 2196627024 bases processed (12.92 Mbases/sec)
+[2025-10-27T15:33:21Z INFO  DKS::single_colored_kmers] 2326297024 bases processed (12.92 Mbases/sec)
+[2025-10-27T15:33:31Z INFO  DKS::single_colored_kmers] 2460197024 bases processed (12.95 Mbases/sec)
+[2025-10-27T15:33:41Z INFO  DKS::single_colored_kmers] 2594735214 bases processed (12.97 Mbases/sec)
+[2025-10-27T15:33:51Z INFO  DKS::single_colored_kmers] 2730225892 bases processed (13.00 Mbases/sec)
+[2025-10-27T15:34:01Z INFO  DKS::single_colored_kmers] 2861635892 bases processed (13.01 Mbases/sec)
+[2025-10-27T15:34:11Z INFO  DKS::single_colored_kmers] 2978265892 bases processed (12.95 Mbases/sec)
+[2025-10-27T15:34:21Z INFO  DKS::single_colored_kmers] 3110995892 bases processed (12.96 Mbases/sec)
+[2025-10-27T15:34:31Z INFO  DKS::single_colored_kmers] 3242915892 bases processed (12.97 Mbases/sec)
+[2025-10-27T15:34:41Z INFO  DKS::single_colored_kmers] 3387873490 bases processed (13.03 Mbases/sec)
+[2025-10-27T15:34:51Z INFO  DKS::single_colored_kmers] 3514303490 bases processed (13.02 Mbases/sec)
+[2025-10-27T15:35:01Z INFO  DKS::single_colored_kmers] 3638543490 bases processed (12.99 Mbases/sec)
+[2025-10-27T15:35:11Z INFO  DKS::single_colored_kmers] 3786943200 bases processed (13.06 Mbases/sec)
+[2025-10-27T15:35:21Z INFO  DKS::single_colored_kmers] 3918692774 bases processed (13.06 Mbases/sec)
+[2025-10-27T15:35:31Z INFO  DKS::single_colored_kmers] 4050512774 bases processed (13.07 Mbases/sec)
+[2025-10-27T15:35:41Z INFO  DKS::single_colored_kmers] 4168332774 bases processed (13.03 Mbases/sec)
+[2025-10-27T15:35:51Z INFO  DKS::single_colored_kmers] 4300922774 bases processed (13.03 Mbases/sec)
+[2025-10-27T15:36:01Z INFO  DKS::single_colored_kmers] 4447639836 bases processed (13.08 Mbases/sec)
+[2025-10-27T15:36:11Z INFO  DKS::single_colored_kmers] 4590029836 bases processed (13.11 Mbases/sec)
+[2025-10-27T15:36:21Z INFO  DKS::single_colored_kmers] 4716389836 bases processed (13.10 Mbases/sec)
+[2025-10-27T15:36:31Z INFO  DKS::single_colored_kmers] 4898237780 bases processed (13.24 Mbases/sec)
+[2025-10-27T15:36:41Z INFO  DKS::single_colored_kmers] 5032968774 bases processed (13.24 Mbases/sec)
+[2025-10-27T15:36:51Z INFO  DKS::single_colored_kmers] 5159188774 bases processed (13.23 Mbases/sec)
+[2025-10-27T15:37:01Z INFO  DKS::single_colored_kmers] 5318716910 bases processed (13.30 Mbases/sec)
+[2025-10-27T15:37:11Z INFO  DKS::single_colored_kmers] 5455996910 bases processed (13.31 Mbases/sec)
+[2025-10-27T15:37:21Z INFO  DKS::single_colored_kmers] 5582056910 bases processed (13.29 Mbases/sec)
+[2025-10-27T15:37:31Z INFO  DKS::single_colored_kmers] 5698891208 bases processed (13.25 Mbases/sec)
+[2025-10-27T15:37:41Z INFO  DKS::single_colored_kmers] 5809211208 bases processed (13.20 Mbases/sec)
+[2025-10-27T15:37:51Z INFO  DKS::single_colored_kmers] 5930198568 bases processed (13.18 Mbases/sec)
+[2025-10-27T15:38:01Z INFO  DKS::single_colored_kmers] 6045974322 bases processed (13.14 Mbases/sec)
+[2025-10-27T15:38:11Z INFO  DKS::single_colored_kmers] 6194777314 bases processed (13.18 Mbases/sec)
+[2025-10-27T15:38:21Z INFO  DKS::single_colored_kmers] 6325687436 bases processed (13.18 Mbases/sec)
+[2025-10-27T15:38:31Z INFO  DKS::single_colored_kmers] 6442966716 bases processed (13.15 Mbases/sec)
+[2025-10-27T15:38:41Z INFO  DKS::single_colored_kmers] 6507466716 bases processed (13.01 Mbases/sec)
+[2025-10-27T15:38:51Z INFO  DKS::single_colored_kmers] 6575456716 bases processed (12.89 Mbases/sec)
+[2025-10-27T15:38:53Z INFO  DKS::single_colored_kmers] Bitpacking color id array
+[2025-10-27T15:39:53Z INFO  DKS::single_colored_kmers] Marked 5489282576 single-colored k-mers
+[2025-10-27T15:39:53Z INFO  DKS::single_colored_kmers] Marked 49737520 multi-colored k-mers
+[2025-10-27T15:39:53Z INFO  DKS::single_colored_kmers] 0 k-mers left not marked
+[2025-10-27T15:39:53Z INFO  DKS] Writing to temp/chromosomes-k63.dks
+[2025-10-27T15:40:06Z INFO  DKS] Index size on disk: 10.3 GiB
+	Command being timed: "DKS build -i chromosomes_fof.txt -o temp/chromosomes-k63.dks --temp-dir temp -k 63 -t 2"
+	User time (seconds): 3769.74
+	System time (seconds): 731.76
+	Percent of CPU this job got: 147%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 51:00.54
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 16261680
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 11101790
+	Voluntary context switches: 7843
+	Involuntary context switches: 45682
+	Swaps: 0
+	File system inputs: 65392712
+	File system outputs: 563605336
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

@@ -1,0 +1,65 @@
+[2025-10-27T16:22:34Z INFO  sbwt::bitpacked_kmer_sorting] Splitting k-mers into bins
+[2025-10-27T16:22:34Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Splitting k-mers into 64 bins
+[2025-10-27T16:22:34Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Bin buffer size: 524288
+[2025-10-27T16:25:56Z INFO  sbwt::bitpacked_kmer_sorting] Total size of k-mer bins: 100236759744 bytes (93.4 GiB)
+[2025-10-27T16:25:56Z INFO  sbwt::bitpacked_kmer_sorting] Sorting and deduplicating bins
+[2025-10-27T16:25:56Z INFO  sbwt::bitpacked_kmer_sorting::kmer_splitter] Sorting k-mer bins
+[2025-10-27T16:32:14Z INFO  sbwt::bitpacked_kmer_sorting] Total size of deduplicated k-mer bins: 88624321536 bytes (82.5 GiB)
+[2025-10-27T16:36:26Z INFO  sbwt::bitpacked_kmer_sorting] Disk peak space during concatenation: 92052443696 bytes (85.7 GiB)
+[2025-10-27T16:36:26Z INFO  sbwt::bitpacked_kmer_sorting] 5539020096 distinct k-mers found
+[2025-10-27T16:36:26Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Identifying k-mers without predecessors
+[2025-10-27T16:43:49Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Building all prefixes of source nodes
+[2025-10-27T16:46:13Z INFO  sbwt::bitpacked_kmer_sorting::dummies] Sorting and deduplicating dummies
+[2025-10-27T16:46:13Z INFO  sbwt::bitpacked_kmer_sorting] 48508 dummy nodes needed
+[2025-10-27T16:46:13Z INFO  sbwt::bitpacked_kmer_sorting] Writing dummies to disk
+[2025-10-27T16:46:13Z INFO  sbwt::bitpacked_kmer_sorting] Temporary disk space peak: 100236759744 bytes (93.4 GiB)
+[2025-10-27T16:46:13Z INFO  sbwt::bitpacked_kmer_sorting] Constructing the sbwt subset sequence
+[2025-10-27T16:56:18Z INFO  sbwt::bitpacked_kmer_sorting] Building the subset rank structure
+[2025-10-27T16:56:19Z INFO  DKS] Marking colors
+[2025-10-27T16:56:19Z INFO  DKS::single_colored_kmers] Marking colors
+[2025-10-27T16:56:20Z INFO  DKS::single_colored_kmers] Processing up to 2n bases, where n is the number of bases in the input.
+[2025-10-27T16:56:30Z INFO  DKS::single_colored_kmers] 463990000 bases processed (46.40 Mbases/sec)
+[2025-10-27T16:56:40Z INFO  DKS::single_colored_kmers] 953840000 bases processed (47.69 Mbases/sec)
+[2025-10-27T16:56:50Z INFO  DKS::single_colored_kmers] 1435500000 bases processed (47.85 Mbases/sec)
+[2025-10-27T16:57:00Z INFO  DKS::single_colored_kmers] 1885330000 bases processed (47.13 Mbases/sec)
+[2025-10-27T16:57:10Z INFO  DKS::single_colored_kmers] 2359810000 bases processed (47.19 Mbases/sec)
+[2025-10-27T16:57:20Z INFO  DKS::single_colored_kmers] 2867737598 bases processed (47.79 Mbases/sec)
+[2025-10-27T16:57:30Z INFO  DKS::single_colored_kmers] 3388441962 bases processed (48.40 Mbases/sec)
+[2025-10-27T16:57:40Z INFO  DKS::single_colored_kmers] 3880131962 bases processed (48.50 Mbases/sec)
+[2025-10-27T16:57:50Z INFO  DKS::single_colored_kmers] 4377083490 bases processed (48.63 Mbases/sec)
+[2025-10-27T16:58:00Z INFO  DKS::single_colored_kmers] 4864763200 bases processed (48.65 Mbases/sec)
+[2025-10-27T16:58:10Z INFO  DKS::single_colored_kmers] 5358441712 bases processed (48.71 Mbases/sec)
+[2025-10-27T16:58:20Z INFO  DKS::single_colored_kmers] 5818626910 bases processed (48.49 Mbases/sec)
+[2025-10-27T16:58:30Z INFO  DKS::single_colored_kmers] 6314581560 bases processed (48.57 Mbases/sec)
+[2025-10-27T16:58:40Z INFO  DKS::single_colored_kmers] 6426116716 bases processed (45.90 Mbases/sec)
+[2025-10-27T16:58:50Z INFO  DKS::single_colored_kmers] 6484176716 bases processed (43.23 Mbases/sec)
+[2025-10-27T16:59:00Z INFO  DKS::single_colored_kmers] 6550466716 bases processed (40.94 Mbases/sec)
+[2025-10-27T16:59:06Z INFO  DKS::single_colored_kmers] Bitpacking color id array
+[2025-10-27T17:00:07Z INFO  DKS::single_colored_kmers] Marked 5489282576 single-colored k-mers
+[2025-10-27T17:00:07Z INFO  DKS::single_colored_kmers] Marked 49737520 multi-colored k-mers
+[2025-10-27T17:00:07Z INFO  DKS::single_colored_kmers] 0 k-mers left not marked
+[2025-10-27T17:00:07Z INFO  DKS] Writing to temp/chromosomes-k63.dks
+[2025-10-27T17:00:19Z INFO  DKS] Index size on disk: 10.3 GiB
+	Command being timed: "DKS build -i chromosomes_fof.txt -o temp/chromosomes-k63.dks --temp-dir temp -k 63 -t 8"
+	User time (seconds): 3832.50
+	System time (seconds): 724.68
+	Percent of CPU this job got: 201%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 37:46.94
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 16421784
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 11589446
+	Voluntary context switches: 12577
+	Involuntary context switches: 48699
+	Swaps: 0
+	File system inputs: 60231080
+	File system outputs: 563605056
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
