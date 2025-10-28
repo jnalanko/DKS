@@ -11,6 +11,7 @@ mod single_colored_kmers;
 mod io;
 mod parallel_queries;
 mod single_threaded_queries;
+mod util;
 
 
 #[derive(Parser)]

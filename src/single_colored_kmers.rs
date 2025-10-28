@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
 use crossbeam::channel::{Receiver, RecvTimeoutError};
+use jseqio::seq_db::SeqDB;
 use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -198,6 +199,22 @@ impl<T: AtomicUint> AtomicColorVec for Vec<T> {
 
 }
 
+/*
+struct ColoringBatch {
+    dbs: Vec<(usize, SeqDB)>, // Pairs (color, seqs)
+}
+
+impl ColoringBatch {
+    fn push(&mut self, color: usize, seq: &[u8]) {
+        if let Some((db_color, db)) = self.dbs.last_mut() {
+            if *db_color == color {
+                db.push_seq(&seq);
+            }
+        }
+    }
+}
+*/
+
 impl SingleColoredKmers {
 
     pub fn k(&self) -> usize {
@@ -294,6 +311,7 @@ impl SingleColoredKmers {
             }
         }
     }
+
 
     // Generic function that works on any of u8, 16, u32 and u64
     fn mark_colors<T: SeqStream + Send, A: AtomicColorVec + Send + Sync>(sbwt: &sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: &sbwt::LcsArray,  input_streams: Vec<T>, n_threads: usize) -> ColorStorage {

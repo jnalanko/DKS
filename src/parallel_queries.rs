@@ -224,46 +224,20 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
                 let b = batch_size;
                 let k = index.k();
 
-                n_bases_processed += n;
-
-                if n < k {
-                    // No full k-mers in this sequence -> push an empty sequence
-                    batch.push(b"", false);
-                    continue;
-                }
-
-                // Let b be batch size and n be the length of the sequence.
-                // Split the sequence into m pieces of length b except for the
-                // last sequence that can have a shorter length, such that the
-                // pieces overlap by k-1 characters and cover the whole sequence.
-                // How many pieces will be there be? That is, what is the smallest
-                // m such that b + (m-1)*(b-(k-1)) >= n? We must have b-k+1 > 0, or 
-                // otherwise the inequality flips the wrong way around.
-                // Assuming b-k+1 > 0, the solution is: m >= (n-k+1) / (b-k+1).
-                // So we take the ceil of the righthand side.
-
-                assert!(b as isize - k as isize + 1 > 0); // b-k+1 > 0
-                let m = (n-k+1).div_ceil(b-k+1);
-                assert!(m > 0); // This should be true since we checked for n < k earlier
-
-                for piece_idx in 0..m {
-                    let pieces_before = piece_idx;
-                    let start = b*piece_idx - (k-1)*pieces_before;
-                    let piece = if piece_idx < m-1 {
-                        // Not the last piece: has full length b
-                        &seq[start..start+b]
-                    } else {
-                        &seq[start..] // Until the end (can have length shorter than b)
-                    };
-
+                crate::util::process_kmers_in_pieces(seq, k, batch_size, |piece_idx, piece: &[u8]|{
                     batch.push(piece, piece_idx > 0);
 
                     if batch.len() >= b {
+                        // Swap the current batch with an empty batch, and send it to processing
                         let next_batch_id = batch.batch_id + 1;
-                        batch_send.send(batch).unwrap();
-                        batch = QueryBatch::new(next_batch_id, index.k());
+                        let mut batch_to_send = QueryBatch::new(next_batch_id, index.k()); // Empty batch
+                        std::mem::swap(&mut batch, &mut batch_to_send);
+                        eprintln!("Sending {}", String::from_utf8_lossy(batch_to_send.seqs.get(0).seq));
+                        batch_send.send(batch_to_send).unwrap();
                     }
-                }
+                });
+
+                n_bases_processed += n;
             }
 
             // Push the last remaining non-full batch. Can be empty but that's ok.
