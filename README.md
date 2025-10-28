@@ -116,3 +116,18 @@ Options:
   -t, --n-threads <N_THREADS>  Number of parallel threads [default: 4]
   -h, --help                   Print help
 ```
+
+## For developers: Building portable Linux binaries for release
+
+For Linux, install the build toolchain for target x86_64-unknown-linux-musl:
+
+```bash
+rustup target add x86_64-unknown-linux-musl
+```
+
+Compile with:
+
+```bash
+cargo build --release --target x86_64-unknown-linux-musl
+```
+
