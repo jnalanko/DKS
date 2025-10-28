@@ -1,6 +1,6 @@
 # Disjoint k-mer sets
 
-DKS (Disjoint Kmer Sets) is a tool for indexing sets of k-mers that do not intersect. Each input k-mer set is assigned a unique *color*. The query takes an index and a set of query sequences, and reports the color of each k-mer in the query.
+DKS (Disjoint Kmer Sets) is a tool for indexing sets of k-mers that do not intersect. Each input k-mer set is assigned a unique *color* that indicates which set the k-mer is from. The query takes an index and a set of query sequences, and reports the color of each k-mer in the query.
 
 The indexing is based on the [Spectral Burrows-Wheeler Transform](https://docs.rs/sbwt/latest/sbwt).
 
