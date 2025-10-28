@@ -7,7 +7,8 @@ The indexing is based on the [Spectral Burrows-Wheeler Transform](https://docs.r
 ## Installation
 
 * Step 1: [Install the latest Rust compiler](https://rust-lang.org/tools/install), if not already installed. This does not require root privileges.
-* Step 2: Compile and install by running `cargo install --path .` in this directory. 
+* Step 2: Clone and enter the repository: `git clone https://github.com/jnalanko/DKS --recursive; cd DKS`.
+* Step 3: Compile and install by running `cargo install --path .` in this directory. 
 
 Now you should be able to run DKS by typing `DKS` on the command line.
 
