@@ -1,0 +1,126 @@
+[2025-10-27T13:26:38Z INFO  sbwt::bitpacked_kmer_sorting_mem] Bit-packing and sorting all k-mers of all input sequences (dedup batches: false).
+[2025-10-27T13:26:38Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Producer buffer capacity: 8 MiB
+[2025-10-27T13:26:38Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Thread-local buffer capacity: 512 KiB (512 MiB total)
+[2025-10-27T13:26:38Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Shared bin buffer capacity: 119.9 MiB (7.5 GiB total)
+[2025-10-27T13:26:38Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Allocating shared buffers
+[2025-10-27T13:26:38Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Bitpacking and binning k-mers
+[2025-10-27T13:27:06Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Producer thread: all work pushed to work queue
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting k-mer bins
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AAA of size 239672884
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GAG of size 106356352
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GAA of size 125043773
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GTA of size 114269639
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ACA of size 126668760
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CAA of size 92068623
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GCT of size 14342898
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GGG of size 82455834
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GCG of size 15425135
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AGA of size 139497673
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GCA of size 16468115
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GGA of size 111254997
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TGA of size 100849979
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TAA of size 154359573
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GAT of size 80188216
+[2025-10-27T13:27:10Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AAG of size 125272254
+[2025-10-27T13:27:11Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TCA of size 100849970
+[2025-10-27T13:27:11Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ATA of size 127330500
+[2025-10-27T13:27:11Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GCC of size 17826007
+[2025-10-27T13:27:12Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GGT of size 115519172
+[2025-10-27T13:27:14Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TAG of size 83716135
+[2025-10-27T13:27:14Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ACG of size 90521741
+[2025-10-27T13:27:14Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CAC of size 95054995
+[2025-10-27T13:27:15Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TGC of size 16468065
+[2025-10-27T13:27:15Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TAT of size 127330309
+[2025-10-27T13:27:15Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TCC of size 111254531
+[2025-10-27T13:27:15Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GTC of size 127550019
+[2025-10-27T13:27:15Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GGC of size 17826071
+[2025-10-27T13:27:16Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TGG of size 72492622
+[2025-10-27T13:27:16Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ACT of size 123049697
+[2025-10-27T13:27:16Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AAT of size 127315293
+[2025-10-27T13:27:16Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GAC of size 127550102
+[2025-10-27T13:27:16Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ACC of size 115518892
+[2025-10-27T13:27:17Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ATC of size 80187974
+[2025-10-27T13:27:17Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CGA of size 87535806
+[2025-10-27T13:27:17Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AGC of size 14342918
+[2025-10-27T13:27:17Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AGG of size 97641823
+[2025-10-27T13:27:18Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TAC of size 114269652
+[2025-10-27T13:27:18Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CCA of size 72492317
+[2025-10-27T13:27:18Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CAG of size 59187295
+[2025-10-27T13:27:19Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TTA of size 154359265
+[2025-10-27T13:27:19Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TGT of size 126668004
+[2025-10-27T13:27:20Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TCG of size 87535940
+[2025-10-27T13:27:20Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ATG of size 70168183
+[2025-10-27T13:27:20Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CAT of size 70168160
+[2025-10-27T13:27:21Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CGC of size 15425111
+[2025-10-27T13:27:21Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CCC of size 82455216
+[2025-10-27T13:27:21Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TTG of size 92068792
+[2025-10-27T13:27:21Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CGG of size 74465806
+[2025-10-27T13:27:21Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GTG of size 95054721
+[2025-10-27T13:27:21Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TTC of size 125043516
+[2025-10-27T13:27:21Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AGT of size 123049685
+[2025-10-27T13:27:22Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin AAC of size 118884353
+[2025-10-27T13:27:22Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TCT of size 139497164
+[2025-10-27T13:27:22Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CCG of size 74465750
+[2025-10-27T13:27:22Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin ATT of size 127315274
+[2025-10-27T13:27:23Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin GTT of size 118884226
+[2025-10-27T13:27:23Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CCT of size 97641310
+[2025-10-27T13:27:24Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CTA of size 83716294
+[2025-10-27T13:27:24Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin TTT of size 239672237
+[2025-10-27T13:27:24Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CGT of size 90521802
+[2025-10-27T13:27:24Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CTG of size 59187142
+[2025-10-27T13:27:24Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CTT of size 125272142
+[2025-10-27T13:27:25Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Sorting bin CTC of size 106356052
+[2025-10-27T13:27:32Z INFO  sbwt::bitpacked_kmer_sorting_mem::kmer_splitter] Concatenating k-mer bins
+[2025-10-27T13:27:40Z INFO  sbwt::bitpacked_kmer_sorting_mem] 5009277210 distinct k-mers found
+[2025-10-27T13:27:40Z INFO  sbwt::bitpacked_kmer_sorting_mem] Constructing dummy k-mers
+[2025-10-27T13:27:40Z INFO  sbwt::bitpacked_kmer_sorting_mem::dummies] Identifying k-mers without predecessors
+[2025-10-27T13:27:46Z INFO  sbwt::bitpacked_kmer_sorting_mem::dummies] Building dummy k-mer strings
+[2025-10-27T13:27:46Z INFO  sbwt::bitpacked_kmer_sorting_mem::dummies] Sorting dummy k-mers
+[2025-10-27T13:27:46Z INFO  sbwt::bitpacked_kmer_sorting_mem] 15009 dummy nodes constructed
+[2025-10-27T13:27:46Z INFO  sbwt::bitpacked_kmer_sorting_mem] Compacting dummies and lengths
+[2025-10-27T13:27:46Z INFO  sbwt::bitpacked_kmer_sorting_mem] Constructing the sbwt subset sequence
+[2025-10-27T13:28:13Z INFO  sbwt::bitpacked_kmer_sorting_mem::cursors] Computing LCS values
+[2025-10-27T13:28:15Z INFO  sbwt::bitpacked_kmer_sorting_mem::cursors] Compressing LCS array to log(k) bits per element
+[2025-10-27T13:28:40Z INFO  sbwt::bitpacked_kmer_sorting_mem] Building the subset rank structure
+[2025-10-27T13:28:41Z INFO  DKS] Marking colors
+[2025-10-27T13:28:41Z INFO  DKS::single_colored_kmers] Marking colors
+[2025-10-27T13:28:42Z INFO  DKS::single_colored_kmers] Processing up to 2n bases, where n is the number of bases in the input.
+[2025-10-27T13:28:52Z INFO  DKS::single_colored_kmers] 941980000 bases processed (94.20 Mbases/sec)
+[2025-10-27T13:29:02Z INFO  DKS::single_colored_kmers] 1813920000 bases processed (90.69 Mbases/sec)
+[2025-10-27T13:29:12Z INFO  DKS::single_colored_kmers] 2690810000 bases processed (89.69 Mbases/sec)
+[2025-10-27T13:29:22Z INFO  DKS::single_colored_kmers] 3618117074 bases processed (90.45 Mbases/sec)
+[2025-10-27T13:29:32Z INFO  DKS::single_colored_kmers] 4492316784 bases processed (89.84 Mbases/sec)
+[2025-10-27T13:29:42Z INFO  DKS::single_colored_kmers] 5436973912 bases processed (90.61 Mbases/sec)
+[2025-10-27T13:29:52Z INFO  DKS::single_colored_kmers] 6068889014 bases processed (86.70 Mbases/sec)
+[2025-10-27T13:30:02Z INFO  DKS::single_colored_kmers] 6319255188 bases processed (78.99 Mbases/sec)
+[2025-10-27T13:30:12Z INFO  DKS::single_colored_kmers] 6488176716 bases processed (72.09 Mbases/sec)
+[2025-10-27T13:30:22Z INFO  DKS::single_colored_kmers] 6552216716 bases processed (65.52 Mbases/sec)
+[2025-10-27T13:30:27Z INFO  DKS::single_colored_kmers] Bitpacking color id array
+[2025-10-27T13:31:23Z INFO  DKS::single_colored_kmers] Marked 4906240860 single-colored k-mers
+[2025-10-27T13:31:23Z INFO  DKS::single_colored_kmers] Marked 103036350 multi-colored k-mers
+[2025-10-27T13:31:23Z INFO  DKS::single_colored_kmers] 0 k-mers left not marked
+[2025-10-27T13:31:23Z INFO  DKS] Writing to temp/chromosomes-k31-mem.dks
+[2025-10-27T13:31:34Z INFO  DKS] Index size on disk: 8.7 GiB
+	Command being timed: "DKS build -i chromosomes_fof.txt -o temp/chromosomes-k31-mem.dks -k 31 -t 16"
+	User time (seconds): 2145.23
+	System time (seconds): 42.40
+	Percent of CPU this job got: 737%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 4:56.69
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 53792804
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 7614025
+	Voluntary context switches: 15023
+	Involuntary context switches: 1550
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 18346784
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
