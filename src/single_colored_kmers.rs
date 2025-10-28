@@ -97,7 +97,7 @@ impl Iterator for KmerLookupIterator<'_, '_> {
 trait AtomicColorVec{
     // Represents None as the max value of the atomic type
 
-    fn store(&self, i: usize, x: usize); 
+    fn update(&self, i: usize, x: usize); 
     fn read(&self, i: usize) -> ColorVecValue;
     fn new(len: usize) -> Self; // Stores a None (=max_value()) to each position
 }
@@ -105,8 +105,6 @@ trait AtomicColorVec{
 trait AtomicUint {
     fn load(&self, order: std::sync::atomic::Ordering) -> usize;
     fn fetch_update<F: Fn(usize) -> usize>(&self, f: F);
-    #[allow(dead_code)]
-    fn store(&self, val: usize, order: std::sync::atomic::Ordering);
     fn max_value() -> usize;
     fn new(val: usize) -> Self;
 }
@@ -114,9 +112,6 @@ trait AtomicUint {
 impl AtomicUint for AtomicU8 {
     fn load(&self, order: std::sync::atomic::Ordering) -> usize {
         self.load(order) as usize
-    }
-    fn store(&self, val: usize, order: std::sync::atomic::Ordering) {
-        self.store(val as u8, order)
     }
     fn fetch_update<F: Fn(usize) -> usize>(&self, f: F) {
         self.fetch_update(Relaxed, Relaxed, |x| Some(f(x as usize) as u8)).unwrap();
@@ -133,9 +128,6 @@ impl AtomicUint for AtomicU16 {
     fn load(&self, order: std::sync::atomic::Ordering) -> usize {
         self.load(order) as usize
     }
-    fn store(&self, val: usize, order: std::sync::atomic::Ordering) {
-        self.store(val as u16, order)
-    }
     fn fetch_update<F: Fn(usize) -> usize>(&self, f: F) {
         self.fetch_update(Relaxed, Relaxed, |x| Some(f(x as usize) as u16)).unwrap();
     }
@@ -150,9 +142,6 @@ impl AtomicUint for AtomicU16 {
 impl AtomicUint for AtomicU32 {
     fn load(&self, order: std::sync::atomic::Ordering) -> usize {
         self.load(order) as usize
-    }
-    fn store(&self, val: usize, order: std::sync::atomic::Ordering) {
-        self.store(val as u32, order)
     }
     fn fetch_update<F: Fn(usize) -> usize>(&self, f: F) {
         self.fetch_update(Relaxed, Relaxed, |x| Some(f(x as usize) as u32)).unwrap();
@@ -169,9 +158,6 @@ impl AtomicUint for AtomicU64 {
     fn load(&self, order: std::sync::atomic::Ordering) -> usize {
         self.load(order) as usize
     }
-    fn store(&self, val: usize, order: std::sync::atomic::Ordering) {
-        self.store(val as u64, order)
-    }
     fn fetch_update<F: Fn(usize) -> usize>(&self, f: F) {
         self.fetch_update(Relaxed, Relaxed, |x| Some(f(x as usize) as u64)).unwrap();
     }
@@ -184,7 +170,7 @@ impl AtomicUint for AtomicU64 {
 }
 
 impl<T: AtomicUint> AtomicColorVec for Vec<T> {
-    fn store(&self, i: usize, x: usize) {
+    fn update(&self, i: usize, x: usize) {
         assert!(x < T::max_value()-1); // MAX and MAX - 1 are reserved values
         self[i].fetch_update(|cur| {
             if cur == T::max_value() || cur == x { // No value stored yet, or storing the same value
@@ -340,7 +326,7 @@ impl SingleColoredKmers {
                     ms.enumerate().for_each(|(i, (len, range))| { 
                         if len == k {
                             debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
-                            color_ids.store(range.start, color);
+                            color_ids.update(range.start, color);
                             store_count += 1;
                         } else if cfg!(debug_assertions) && i >= k-1 {
                             // All valid k-mers should be found. If we're here, the k-mer must have had non-ACGT
