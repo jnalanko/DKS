@@ -10,7 +10,7 @@ The indexing is based on the [Spectral Burrows-Wheeler Transform](https://docs.r
 * Step 2: Clone and enter the repository: `git clone https://github.com/jnalanko/DKS --recursive; cd DKS`.
 * Step 3: Compile and install by running `cargo install --path .` in this directory. 
 
-Now you should be able to run DKS by typing `DKS` on the command line.
+Now you should be able to run DKS by typing `dks` on the command line.
 
 ## Quick start
 
@@ -27,7 +27,7 @@ This file is at `example/file_of_files.txt`. The files are assigned to colors 0,
 To index this data with k = 5, using 8 threads and the directory `./temp` for temporary working space, run: 
 
 ```bash
-DKS build -k 5 -i example/file_of_files.txt -o example/index.dks --external-memory ./temp -t 8
+dks build -k 5 -i example/file_of_files.txt -o example/index.dks --external-memory ./temp -t 8
 ```
 
 This will save the index to `example/index.dks`. Reverse complements of k-mers are automatically indexed and receive the same color as the forward k-mer. In a real use case, you might want to use something like k = 31. **Too slow?** Remove the option `--external-memory ./temp` to run entirely in RAM. See [benchmarks](#performance) for how this affects time and space on a human genome. See also [best practices](#best-practices) for more advice on how to maximize performance.
@@ -35,7 +35,7 @@ This will save the index to `example/index.dks`. Reverse complements of k-mers a
 **Lookup**. To query all k-mers in the file `example/query.fasta` against the index built above, using 8 threads, writing the output to `example/out.tsv`, run:
 
 ```bash
-DKS lookup -q example/query.fasta -i example/index.dks -t 8 > example/out.tsv
+dks lookup -q example/query.fasta -i example/index.dks -t 8 > example/out.tsv
 ```
 
 This will write the following to `example/out.tsv`:
@@ -91,7 +91,7 @@ In pathological cases such as when the k-mers do not overlap at all, the space c
 ### Build
 
 ```
-Usage: DKS build [OPTIONS] -k <K> --input <INPUT> --output <OUTPUT>
+Usage: dks build [OPTIONS] -k <K> --input <INPUT> --output <OUTPUT>
 
 Options:
   -k <K>                            
@@ -108,7 +108,7 @@ Options:
 ### Lookup
 
 ```
-Usage: DKS lookup [OPTIONS] --query <QUERY> --index <INDEX>
+Usage: dks lookup [OPTIONS] --query <QUERY> --index <INDEX>
 
 Options:
   -q, --query <QUERY>          A file with one fasta/fastq filename per line

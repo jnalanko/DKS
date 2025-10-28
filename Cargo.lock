@@ -3,31 +3,6 @@
 version = 4
 
 [[package]]
-name = "DKS"
-version = "0.1.0"
-dependencies = [
- "bincode",
- "bitvec",
- "byteorder",
- "clap",
- "crossbeam 0.8.4",
- "env_logger 0.10.2",
- "human_bytes",
- "indicatif",
- "jseqio",
- "log",
- "rand 0.8.5",
- "rand_chacha 0.9.0",
- "rand_distr",
- "rayon",
- "rustc-hash",
- "sbwt",
- "serde",
- "serde_json",
- "simple-sds-sbwt",
-]
-
-[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -423,6 +398,31 @@ name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+
+[[package]]
+name = "dks"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "bitvec",
+ "byteorder",
+ "clap",
+ "crossbeam 0.8.4",
+ "env_logger 0.10.2",
+ "human_bytes",
+ "indicatif",
+ "jseqio",
+ "log",
+ "rand 0.8.5",
+ "rand_chacha 0.9.0",
+ "rand_distr",
+ "rayon",
+ "rustc-hash",
+ "sbwt",
+ "serde",
+ "serde_json",
+ "simple-sds-sbwt",
+]
 
 [[package]]
 name = "either"

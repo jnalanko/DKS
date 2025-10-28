@@ -1,5 +1,5 @@
 [package]
-name = "DKS"
+name = "dks"
 version = "0.1.0"
 edition = "2021"
 description = "A data structure for querying disjoint k-mer sets"
