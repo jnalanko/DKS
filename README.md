@@ -6,6 +6,10 @@ The indexing is based on the [Spectral Burrows-Wheeler Transform](https://docs.r
 
 ## Installation
 
+Precompiled x86-64 Linux binaries are available at [releases](https://github.com/jnalanko/DKS/releases).
+
+To build from source, follow these steps:
+
 * Step 1: [Install the latest Rust compiler](https://rust-lang.org/tools/install), if not already installed. This does not require root privileges.
 * Step 2: Clone and enter the repository: `git clone https://github.com/jnalanko/DKS --recursive; cd DKS`.
 * Step 3: Compile and install by running `cargo install --path .` in this directory. 
