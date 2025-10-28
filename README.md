@@ -81,7 +81,7 @@ Theoretical ideal parallel speedups are shown with dashed lines. The size of the
 
 ### Indexing memory estimate
 
-When run without `--external-memory`, the memory is roughly 16n ⌈k/32⌉ bytes, where n is the number of nucleotides in the input. For example, when indexing the 31-mers in all chromosomes of the human genome (3.3 billion nucleotides), the predicted space is 49.2 GiB, and the actual space is 51.2 GiB. When run with external memory enabled, this amount of data is written and read from the disk instead, and the peak memory is only 13.4 GiB.
+When run without `--external-memory`, the memory is roughly 16n ⌈k/32⌉ bytes, where n is the number of nucleotides in the input. For example, when indexing the 31-mers in all chromosomes of the human genome (3.3 billion nucleotides), the predicted space is 49.2 GiB, and the actual space is 51.2 GiB. When run with external memory enabled, this amount of data is written to and read from the disk instead, and the peak memory is only 13.4 GiB.
 
 In pathological cases such as when the k-mers do not overlap at all, the space can be larger. 
 
