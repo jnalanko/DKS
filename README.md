@@ -18,12 +18,12 @@ Now you should be able to run DKS by typing `dks` on the command line.
 
 ## Quick start
 
-**Indexing**. This repository contains a small example dataset to demonstrate the usage of the tool. In the subdirectory `example`, there are files `A.fasta`, `B.fasta` and `C.fasta`. The input for indexing is a file with one filename for each line, like here:
+**Indexing**. This repository contains a small example dataset to demonstrate the usage of the tool. In the subdirectory `example`, there are files `A.fasta`, `B.fasta` and `C.fasta`. The input for indexing is a file with one filename for each line, like so:
 
 ```
-/example/A.fasta
-/example/B.fasta
-/example/C.fasta
+./example/A.fasta
+./example/B.fasta
+./example/C.fasta
 ```
 
 This file is at `example/file_of_files.txt`. The files are assigned to colors 0,1,2 in the same order as they appear in the list. All k-mers in a file are colored with the color of the file. If the same k-mer appears in multiple files, it will be given a special color indicating that it has multiple colors, but the index does not store which colors those are.
