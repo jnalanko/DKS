@@ -84,12 +84,16 @@ impl sbwt::SeqStream for DynamicFastXReaderWrapper{
 }
 
 fn main() {
+
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info")
     }
     env_logger::init();
 
+    log::info!("Running dks version {}", env!("CARGO_PKG_VERSION"));
+
     let args = Cli::parse();
+
     match args.command {
         Subcommands::Build { input: input_fof, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof).unwrap()).lines().map(|f| PathBuf::from(f.unwrap())).collect();
