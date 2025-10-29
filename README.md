@@ -123,15 +123,17 @@ Options:
 
 ## For developers: Building portable Linux binaries for release
 
-For Linux, install the build toolchain for target x86_64-unknown-linux-musl:
+For binaries Linux, install the build toolchain for target `x86_64-unknown-linux-musl`:
 
 ```bash
 rustup target add x86_64-unknown-linux-musl
 ```
 
-Compile with:
+Make the release tar.gz and the github tag with:
 
 ```bash
-cargo build --release --target x86_64-unknown-linux-musl
+bash package_release.bash
 ```
+
+Then go to Github, write the release notes and add the .tar.gz.
 
