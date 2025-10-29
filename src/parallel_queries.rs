@@ -335,6 +335,12 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    enum Color {
+        Single(usize),
+        Multiple,
+    }
+
     fn random_test(batch_size: usize) {
         let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(125);
 
@@ -345,7 +351,7 @@ mod tests {
         // Generate DNA sequences of random length. 
         // Each k-mer in the sequences must be unique! The following algorithm ensures that,
         // but it may loop forever if we get unlucky. The RNG seed is chosen so that this does not happen.
-        let mut kmer_to_color = std::collections::HashMap::<Vec<u8>, usize>::new();
+        let mut kmer_to_color = std::collections::HashMap::<Vec<u8>, Color>::new();
         for color in 0..2 {
             let len = (rng.next_u64() % 5000 + 1) as usize;
             let mut seq: Vec<u8> = Vec::new();
@@ -358,21 +364,18 @@ mod tests {
                     _ => b'T',
                 };
                 seq.push(nucleotide);
-
-                // Ensure the last k-mer is unique
-                while seq.len() >= k && kmer_to_color.contains_key(&seq[seq.len()-k..]) {
-                    // K-mer already exists, remove last nucleotide and try again
-                    seq.pop();
-                    let nucleotide = match rng.next_u64() % 4 {
-                        0 => b'A',
-                        1 => b'C',
-                        2 => b'G',
-                        _ => b'T',
-                    };
-                    seq.push(nucleotide);
-                }
                 if seq.len() >= k {
-                    kmer_to_color.insert(seq[seq.len()-k..].to_vec(), color);
+                    let kmer = &seq[seq.len()-k..];
+                    if let Some(old) = kmer_to_color.get(kmer) {
+                        if let Color::Single(old_color) = old {
+                            if *old_color != color {
+                                kmer_to_color.insert(kmer.to_vec(), Color::Multiple);
+                            } // Else the color matches the old color -> keep as is
+                        } // Else we have multiple colors -> keep as is
+                    } else {
+                        // Nothing stored yet -> store single color
+                        kmer_to_color.insert(kmer.to_vec(), Color::Single(color));
+                    }
                 }
             }
             sequences.push(seq);
@@ -426,7 +429,7 @@ mod tests {
         let output_str = String::from_utf8(out.into_inner()).unwrap();
         let output_lines = output_str.lines();
         // For each query, the starting positions and colors of found k-mers
-        let mut found_kmers: Vec::<Vec::<(usize,usize)>> = vec![Vec::new(); queries.len()]; 
+        let mut found_kmers: Vec::<Vec::<(usize,Color)>> = vec![Vec::new(); queries.len()]; 
         for (line_idx, line) in output_lines.enumerate() {
             if line_idx == 0 { // tsv header
                 assert_eq!(line, "seq_rank\tfrom_kmer\tto_kmer\tcolor");
@@ -435,7 +438,12 @@ mod tests {
                 let seq_id: usize = fields.next().unwrap().parse().unwrap();
                 let start: usize = fields.next().unwrap().parse().unwrap();
                 let end: usize = fields.next().unwrap().parse().unwrap();
-                let color: usize = fields.next().unwrap().parse().unwrap();
+                let color_token = fields.next().unwrap();
+                let color = if color_token == "*" {
+                    Color::Multiple
+                } else {
+                    Color::Single(color_token.parse::<usize>().unwrap())
+                };
                 for i in start..=end {
                     found_kmers[seq_id].push((i, color));
                 }
@@ -444,7 +452,7 @@ mod tests {
 
         // Verify against known answers
         for query_id in 0..queries.len() {
-            let mut true_answer = Vec::<(usize, usize)>::new();
+            let mut true_answer = Vec::<(usize, Color)>::new();
             for (i, kmer) in queries[query_id].windows(k).enumerate() {
                 if let Some(color) = kmer_to_color.get(kmer) {
                     true_answer.push((i, *color));
