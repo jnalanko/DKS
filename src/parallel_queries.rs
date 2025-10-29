@@ -232,7 +232,6 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
                         let next_batch_id = batch.batch_id + 1;
                         let mut batch_to_send = QueryBatch::new(next_batch_id, index.k()); // Empty batch
                         std::mem::swap(&mut batch, &mut batch_to_send);
-                        eprintln!("Sending {}", String::from_utf8_lossy(batch_to_send.seqs.get(0).seq));
                         batch_send.send(batch_to_send).unwrap();
                     }
                 });
