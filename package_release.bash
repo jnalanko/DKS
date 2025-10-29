@@ -10,7 +10,6 @@ mkdir -p $RELEASE_DIR
 cp README.md LICENSE target/x86_64-unknown-linux-musl/release/dks $RELEASE_DIR
 tar -cvzf $RELEASE_DIR.tar.gz $RELEASE_DIR
 
-
-echo git tag -a "$TAG" -m "DKS $TAG"
-echo git push origin "$TAG"
+git tag -a "$TAG" -m "DKS $TAG"
+git push origin "$TAG"
 
