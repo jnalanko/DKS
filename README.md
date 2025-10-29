@@ -123,7 +123,7 @@ Options:
 
 ## For developers: Building portable Linux binaries for release
 
-For binaries Linux, install the build toolchain for target `x86_64-unknown-linux-musl`:
+For Linux binaries, install the build toolchain for target `x86_64-unknown-linux-musl`:
 
 ```bash
 rustup target add x86_64-unknown-linux-musl
