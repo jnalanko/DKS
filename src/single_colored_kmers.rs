@@ -344,13 +344,16 @@ impl SingleColoredKmers {
         log::info!("Processing up to 2n bases, where n is the number of bases in the input."); // 2n due to reverse complements
         let print_interval = 10; // seconds
         let start_time = Instant::now();
+        let mut last_count = 0_u64;
         loop {
             match quit_signal.recv_timeout(Duration::from_secs(print_interval)) {
                 Ok(_) => return, // Received quit signal
                 Err(RecvTimeoutError::Timeout) => { // print_interval seconds has passed
                     let count = n_bases_processed.load(std::sync::atomic::Ordering::Relaxed);
+                    let dcount = count - last_count;
                     let elapsed = start_time.elapsed().as_secs_f64();
-                    log::info!("{} bases processed ({:.2} Mbases/sec)", count, count as f64 / elapsed / 1e6);
+                    log::info!("{} bases processed (total {}) ({:.2} Mbases/sec)", dcount, count, dcount as f64 / elapsed / 1e6);
+                    last_count = count;
                 },
                 Err(RecvTimeoutError::Disconnected) => {
                     // I'm not sure when this would happen, but let's just quit
