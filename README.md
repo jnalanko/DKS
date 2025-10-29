@@ -89,6 +89,7 @@ In pathological cases such as when the k-mers do not overlap at all, the space c
 
 * When running with `--external-memory`, make sure that the working directory given as the parameter is set to a location with fast sustained writes and reads, preferably a fast SSD drive.
 * An underlying assumption in the tool is that the input k-mers come from longer contiguous sequences. This is exploited to improve running time and space. For best performance, give the inputs as long sequences of overlapping k-mers instead of giving every k-mer separately.
+* If the input data for indexing has many duplicate k-mers in a single input file, you can reduce the memory and/or disk usage during construction by assembling the k-mers into unitigs, using for example [ggcat](https://github.com/algbio/ggcat).
 
 ## Detailed instructions 
 
