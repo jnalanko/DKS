@@ -87,9 +87,9 @@ In pathological cases such as when the k-mers do not overlap at all, the space c
 
 ## Best practices 
 
-* When running with `--external-memory`, make sure that the working directory given as the parameter is set to a location with fast sustained writes and reads, preferably a fast SSD drive.
 * An underlying assumption in the tool is that the input k-mers come from longer contiguous sequences. This is exploited to improve running time and space. For best performance, give the inputs as long sequences of overlapping k-mers instead of giving every k-mer separately.
-* If the input data for indexing has many duplicate k-mers in a single input file, you can reduce the memory and/or disk usage during construction by assembling the k-mers into unitigs, using for example [ggcat](https://github.com/algbio/ggcat).
+* If the input data for indexing has many duplicate k-mers (a bacterial pangenome, for example), you can often **drastically** reduce the memory and/or disk usage during construction by assembling the k-mers into uncolored unitigs, using for example [ggcat](https://github.com/algbio/ggcat), and feeding in the unitigs with `--unitigs`. For example, in the external memory mode, this reduces the temporary disk usage required for indexing 1990 E. coli genomes from 154GiB to 1.1GiB.
+* When running with `--external-memory`, make sure that the working directory given as the parameter is set to a location with fast sustained writes and reads, preferably a fast SSD drive.
 
 ## Detailed instructions 
 
@@ -100,14 +100,19 @@ Usage: dks build [OPTIONS] -k <K> --input <INPUT> --output <OUTPUT>
 
 Options:
   -k <K>                            
-  -i, --input <INPUT>               A file with one fasta/fastq filename per line
   -o, --output <OUTPUT>             Output filename
       --external-memory <TEMP_DIR>  Run in external memory construction mode using the given directory as temporary working space. This reduces the RAM peak but is slower. The resulting index will still be exactly the same.
   -f, --forward-only                Do not add reverse complemented k-mers
   -t, --n-threads <N_THREADS>       Number of parallel threads [default: 4]
-  -s, --sbwt-path <SBWT_PATH>       Optional: a precomputed SBWT file of the input k-mers.
-  -l, --lcs-path <LCS_PATH>         Optional: a precomputed LCS file of the optional SBWT file.
   -h, --help                        Print help
+
+Input:
+  -i, --input <INPUT>      A file with one fasta/fastq filename per line
+  -u, --unitigs <UNITIGS>  Optional: a fasta/fastq file containing the unitigs of all the k-mers in the input files. More generally, any sequence file with same k-mers will do (unitigs, matchtigs, eulertigs...). This speeds up construction and reduces the RAM and disk usage.
+
+Advanced use:
+  -s, --sbwt-path <SBWT_PATH>  Optional: a precomputed Bit Matrix SBWT file of the input k-mers.
+  -l, --lcs-path <LCS_PATH>    Optional: a precomputed LCS file of the optional SBWT file.
 ```
 
 ### Lookup

@@ -28,8 +28,11 @@ pub enum Subcommands {
         #[arg(short, required = true)]
         k: usize,
 
-        #[arg(help = "A file with one fasta/fastq filename per line", short, long, required = true)]
+        #[arg(help = "A file with one fasta/fastq filename per line", short, long, required = true, help_heading = "Input")]
         input: PathBuf,
+
+        #[arg(help = "Optional: a fasta/fastq file containing the unitigs of all the k-mers in the input files. More generally, any sequence file with same k-mers will do (unitigs, matchtigs, eulertigs...). This speeds up construction and reduces the RAM and disk usage", short, long, help_heading = "Input")]
+        unitigs: Option<PathBuf>,
 
         #[arg(help = "Output filename", short, long, required = true)]
         output: PathBuf,
@@ -43,10 +46,10 @@ pub enum Subcommands {
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
 
-        #[arg(help = "Optional: a precomputed SBWT file of the input k-mers.", short, long)]
+        #[arg(help = "Optional: a precomputed Bit Matrix SBWT file of the input k-mers.", short, long, help_heading = "Advanced use")]
         sbwt_path: Option<PathBuf>,
 
-        #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file.", short, long)]
+        #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file.", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
 
     },
@@ -95,11 +98,10 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Subcommands::Build { input: input_fof, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path} => {
+        Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof).unwrap()).lines().map(|f| PathBuf::from(f.unwrap())).collect();
             let mut out = BufWriter::new(File::create(out_path.clone()).unwrap());
 
-            let all_input_seqs = io::ChainedInputStream::new(input_paths.clone());
             let add_rev_comps = !forward_only;
 
             let (sbwt, lcs) = if let Some(sbwt_path) = sbwt_path {
@@ -116,6 +118,11 @@ fn main() {
                 }
                 (sbwt, lcs)
             } else {
+                let all_input_seqs = if let Some(unitigs_path) = unitigs_path {
+                    io::ChainedInputStream::new(vec![unitigs_path.clone()])
+                } else {
+                    io::ChainedInputStream::new(input_paths.clone())
+                };
                 let (sbwt, lcs) = if let Some(td) = temp_dir {
                     // Use disk-based construction
                     sbwt::SbwtIndexBuilder::new()
