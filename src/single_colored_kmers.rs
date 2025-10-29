@@ -8,7 +8,6 @@ use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
 use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
 use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
@@ -199,21 +198,70 @@ impl<T: AtomicUint> AtomicColorVec for Vec<T> {
 
 }
 
-/*
 struct ColoringBatch {
     dbs: Vec<(usize, SeqDB)>, // Pairs (color, seqs)
+    total_len: usize,
 }
 
 impl ColoringBatch {
     fn push(&mut self, color: usize, seq: &[u8]) {
-        if let Some((db_color, db)) = self.dbs.last_mut() {
-            if *db_color == color {
-                db.push_seq(&seq);
+        // logic: push to the last DB if it has the right color,
+        // othewise create a new DB and push to that. Add the length
+        // of seq to self.total_len.
+
+        let mut extended = false;
+        if let Some((last_color, last_db)) = self.dbs.last_mut() {
+            if *last_color == color {
+                // Extend last db
+                last_db.push_seq(seq);
+                extended = true;
             }
         }
+
+        if !extended {
+            // Start a new one
+            let mut db = SeqDB::new();
+            db.push_seq(seq);
+            self.dbs.push((color, db));
+        }
+
+        self.total_len += seq.len();
+    }
+
+    fn run<V: AtomicColorVec>(&self, si: &StreamingIndex<'_, SbwtIndex<SubsetMatrix>, LcsArray>, color_ids: &V, progress_counter: &AtomicU64) {
+        let k = si.k();
+        let mut thread_progress = 0_usize;
+        for (color, db) in self.dbs.iter() {
+            for rec in db.iter() {
+                let seq = rec.seq;
+                let ms = si.matching_statistics_iter(seq);
+                ms.enumerate().for_each(|(i, (len, range))| { 
+                    if len == k {
+                        debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
+                        color_ids.update(range.start, *color);
+                    } else if cfg!(debug_assertions) && i >= k-1 {
+                        // All valid k-mers should be found. If we're here, the k-mer must have had non-ACGT
+                        // characters which make it invalid. Let's verify that.
+                        let kmer = &seq[i-(k-1)..=i];
+                        let all_ACGT = kmer.iter().all(|c| IS_DNA[*c as usize]);
+                        if all_ACGT {
+                            panic!("Error: k-mer {} not found in sbwt", String::from_utf8_lossy(kmer));
+                        }
+                    }
+                    thread_progress += 1;
+                    if thread_progress == 10000 {
+                        // Only record progress every 10000 iterations to reduce synchronization overhead. 
+                        // This made the code 30% faster in tests with 4 threads.
+                        progress_counter.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
+                        thread_progress = 0;
+                    }
+                });
+            }
+        }
+
+        progress_counter.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
     }
 }
-*/
 
 impl SingleColoredKmers {
 
@@ -318,7 +366,6 @@ impl SingleColoredKmers {
 
         let color_ids = A::new(sbwt.n_sets());
         let si = StreamingIndex::new(sbwt, lcs);
-        let k = sbwt.k();
         let n_colors = input_streams.len();
 
         let thread_pool = rayon::ThreadPoolBuilder::new().num_threads(n_threads).build().unwrap();
@@ -335,42 +382,59 @@ impl SingleColoredKmers {
                 }
             });
 
-            input_streams.into_iter().enumerate().par_bridge().map(|(color, mut input_stream)| {
-                let mut thread_progress = 0_usize;
-                let mut store_count = 0_usize;
-                while let Some(seq) = input_stream.stream_next() {
-                    // Figure out colex ranks of k-mers in this sequence
-                    let ms = si.matching_statistics_iter(seq);
-                    ms.enumerate().for_each(|(i, (len, range))| { 
-                        if len == k {
-                            debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
-                            color_ids.update(range.start, color);
-                            store_count += 1;
-                        } else if cfg!(debug_assertions) && i >= k-1 {
-                            // All valid k-mers should be found. If we're here, the k-mer must have had non-ACGT
-                            // characters which make it invalid. Let's verify that.
-                            let kmer = &seq[i-(k-1)..=i];
-                            let all_ACGT = kmer.iter().all(|c| IS_DNA[*c as usize]);
-                            if all_ACGT {
-                                panic!("Error: k-mer {} not found in sbwt", String::from_utf8_lossy(kmer));
+            let (batch_send, batch_recv) = crossbeam::channel::bounded::<ColoringBatch>(4);
+
+            // Create a reader that pushes batches to workers
+            let reader_handle = scope.spawn(move || {
+                let mut batch = ColoringBatch{dbs: vec![], total_len: 0};
+                let b = 10000; // Batch size
+                let k = sbwt.k();
+                for (color, mut stream) in input_streams.into_iter().enumerate() {
+                    while let Some(seq) = stream.stream_next() {
+                        crate::util::process_kmers_in_pieces(seq, k, b, |_piece_idx, piece: &[u8]|{
+                            batch.push(color, piece);
+
+                            if batch.total_len >= b {
+                                // Swap the current batch with an empty batch, and send it to processing
+                                let mut batch_to_send = ColoringBatch{dbs: vec![], total_len: 0}; // Empty batch
+                                std::mem::swap(&mut batch, &mut batch_to_send);
+                                batch_send.send(batch_to_send).unwrap();
                             }
-                        }
-                        thread_progress += 1;
-                        if thread_progress == 10000 {
-                            // Only record progress every 10000 iterations to reduce synchronization overhead. 
-                            // This made the code 30% faster in tests with 4 threads.
-                            n_bases_processed.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
-                            thread_progress = 0;
-                        }
-                    });
+                        });
+                    }
+                }
+                // Push the last batch
+                if batch.total_len > 0 {
+                    batch_send.send(batch).unwrap();
                 }
 
-                // Record remaining progress count
-                n_bases_processed.fetch_add(thread_progress as u64, std::sync::atomic::Ordering::Relaxed);
-                store_count 
-            }).sum::<usize>();
+                // batch_send is dropped here which closes the channel
+            });
 
-            quit_print_send.send(true).unwrap(); // Tell the progress printer to quit (otherwise we hang)
+            // Create worker threads
+            let mut worker_handles = Vec::new();
+            for _ in 0..n_threads {
+                let batch_recv_clone = batch_recv.clone(); // Moved into worker
+                let si_ref = &si; // Moved into worker
+                let n_bases_processed_ref = &n_bases_processed; // Moved into worker
+                let color_ids_ref = &color_ids; // Moved into worker
+                worker_handles.push(scope.spawn(move || {
+                    while let Ok(batch) = batch_recv_clone.recv() {
+                        batch.run(si_ref, color_ids_ref, n_bases_processed_ref);
+                    }
+                }));
+            }
+
+            // Wait for reader to finish
+            reader_handle.join().unwrap();
+
+            // Wait for the workers to finish.
+            for w in worker_handles {
+                w.join().unwrap();
+            }
+
+            // Tell the progress printer to quit (otherwise we hang)
+            quit_print_send.send(true).unwrap(); 
         })});
 
         // Compress color_ids into a BitVec
