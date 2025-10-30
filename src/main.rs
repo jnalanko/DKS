@@ -100,6 +100,9 @@ fn main() {
     match args.command {
         Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof).unwrap()).lines().map(|f| PathBuf::from(f.unwrap())).collect();
+
+            // Create output directory if does not exist
+            std::fs::create_dir_all(out_path.parent().unwrap()).unwrap();
             let mut out = BufWriter::new(File::create(out_path.clone()).unwrap());
 
             let add_rev_comps = !forward_only;
