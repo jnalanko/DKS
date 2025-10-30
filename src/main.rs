@@ -4,7 +4,7 @@ use std::{fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf};
 use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
 use jseqio::reader::DynamicFastXReader;
-use sbwt::{BitPackedKmerSorting, BitPackedKmerSortingMem, LcsArray};
+use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 
 mod single_colored_kmers;
@@ -134,7 +134,7 @@ fn main() {
                         .build_lcs(true)
                         .n_threads(n_threads)
                         .precalc_length(8)
-                        .algorithm(BitPackedKmerSorting::new().dedup_batches(false).temp_dir(&td))
+                        .algorithm(BitPackedKmerSortingDisk::new().dedup_batches(false).temp_dir(&td))
                     .run(all_input_seqs)
                 } else {
                     // Use in-memory construction
