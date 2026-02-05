@@ -11,8 +11,9 @@ use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
 use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use serde::{Deserialize, Serialize};
+use bps_sada::select_support_mcl::SelectSupportMcl;
 
-use crate::wavelet_tree::{RankSupport, SelectSupportMcl0and1};
+use crate::wavelet_tree::{RankSupport, SelectSupportMcl0and1, WaveletTree};
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
 const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
@@ -77,7 +78,7 @@ pub struct SingleColoredKmers {
 
 pub struct KmerLookupIterator<'a, 'b> {
     // This iterator should be initialized so that the first k-1 MS values are skipped
-    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, LcsArray>,
+    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, WaveletTree<RankSupportV<Pat1>, SelectSupportMcl0and1>>,
     index: &'a SingleColoredKmers,
 }
 
@@ -288,7 +289,7 @@ impl SingleColoredKmers {
         out.write_all(&Self::serialization_version_number().to_le_bytes()).unwrap();
 
         self.sbwt.serialize(out).unwrap();
-        self.lcs.serialize(out).unwrap();
+        self.lcs.serialize(out);
 
         bincode::serialize_into(&mut out, &self.colors).unwrap();
         bincode::serialize_into(&mut out, &self.n_colors).unwrap();
@@ -310,7 +311,7 @@ impl SingleColoredKmers {
         }
 
         let sbwt = SbwtIndex::<sbwt::SubsetMatrix>::load(input).unwrap();
-        let lcs = sbwt::LcsArray::load(input).unwrap();
+        let lcs = WaveletTree::load(input);
 
         let colors = bincode::deserialize_from(&mut input).unwrap();
         let n_colors = bincode::deserialize_from(&mut input).unwrap();
@@ -332,7 +333,12 @@ impl SingleColoredKmers {
     // If query is shorter than k, returns an empty.
     pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8]) -> KmerLookupIterator<'a, 'b>{
         let k = self.sbwt.k();
-        let si = StreamingIndex::new(&self.sbwt, &self.lcs);
+        let si = StreamingIndex {
+            extend_right: &self.sbwt,
+            contract_left: &self.lcs,
+            n: self.sbwt.n_sets(),
+            k
+        };
 
         let mut ms_iter = si.matching_statistics_iter(query);
 
@@ -488,8 +494,18 @@ impl SingleColoredKmers {
             SingleColoredKmers::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads)
         };
 
+        // Unpack LCS array to u32. TODO: keep it compressed.
+        let lcs_vec: Vec<u32> = (0..sbwt.n_sets()).map(|i| lcs.access(i) as u32).collect();
+        let wt = WaveletTree::new(&lcs_vec, 0, sbwt.k() as u32,
+            RankSupportV::<Pat1>::new, 
+            |v| SelectSupportMcl0and1 {
+                sel0: SelectSupportMcl::new(v.clone()),
+                sel1: SelectSupportMcl::new(v.clone()),
+            }
+        );
+
         SingleColoredKmers{
-            sbwt, lcs, n_colors, colors: color_storage
+            sbwt, lcs: wt, n_colors, colors: color_storage
         }
     }
 }

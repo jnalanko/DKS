@@ -41,8 +41,8 @@ pub trait SelectSupport {
 
 #[derive(Debug, Clone)]
 pub struct SelectSupportMcl0and1 {
-    sel0: SelectSupportMcl<Sel0>,
-    sel1: SelectSupportMcl<Sel1>,
+    pub sel0: SelectSupportMcl<Sel0>,
+    pub sel1: SelectSupportMcl<Sel1>,
 }
 
 impl SelectSupport for SelectSupportMcl0and1 {
@@ -206,6 +206,38 @@ where
             node.rank.serialize(&mut writer);
             node.sel.serialize(&mut writer);
         }
+    }
+
+    pub fn load(mut reader: &mut impl std::io::Read) -> Self {
+        let n_nodes: u64 = bincode::deserialize_from(&mut reader).unwrap();
+        let lo: u32 = bincode::deserialize_from(&mut reader).unwrap();
+        let hi: u32 = bincode::deserialize_from(&mut reader).unwrap();
+        let _n_nodes_check: u64 = bincode::deserialize_from(&mut reader).unwrap();
+        assert_eq!(n_nodes, _n_nodes_check);
+
+        let mut nodes = Vec::with_capacity(n_nodes as usize);
+        for _ in 0..n_nodes {
+            let lo: u32 = bincode::deserialize_from(&mut reader).unwrap();
+            let hi: u32 = bincode::deserialize_from(&mut reader).unwrap();
+            let bits_len_bytes: u64 = bincode::deserialize_from(&mut reader).unwrap();
+            let mut bits_bytes = vec![0u64; (bits_len_bytes as usize + 7) / 8];
+            reader.read_exact(bytemuck::cast_slice_mut(&mut bits_bytes)).unwrap();
+            let bits = Arc::new(BitVec::<u64, Lsb0>::from_slice(&bits_bytes));
+            let rank = R::load(&mut reader, bits.clone());
+            let sel = S::load(&mut reader, bits.clone());
+            nodes.push(Node {
+                lo,
+                hi,
+                mid: 0, // mid is not needed for queries, so we can skip storing it
+                bits,
+                rank,
+                sel,
+                left: None,
+                right: None,
+            });
+        }
+
+        Self { nodes, n: n_nodes as usize, lo, hi }
     }
 
     #[inline]
