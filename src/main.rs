@@ -12,7 +12,7 @@ mod io;
 mod parallel_queries;
 mod single_threaded_queries;
 mod util;
-
+mod wavelet_tree;
 
 #[derive(Parser)]
 #[command(arg_required_else_help = true)]

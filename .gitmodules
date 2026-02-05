@@ -1,3 +1,6 @@
 [submodule "sbwt-rs-cli"]
 	path = sbwt-rs-cli
 	url = https://github.com/jnalanko/sbwt-rs-cli
+[submodule "bps_sada"]
+	path = bps_sada
+	url = https://github.com/jnalanko/bps_sada

@@ -27,3 +27,4 @@ rustc-hash = "2.1.1"
 rand_chacha = "0.9.0"
 human_bytes = "0.4.3"
 rayon = "1.11.0"
+bps_sada = {path = "./bps_sada", version = "0.1.0"}
