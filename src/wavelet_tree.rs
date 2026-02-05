@@ -13,11 +13,20 @@ pub trait RankSupport {
     fn rank0(&self, idx: usize) -> usize {
         idx - self.rank1(idx)
     }
+
+    fn serialize(&self, writer: &mut impl std::io::Write);
+    fn load(reader: &mut impl std::io::Read, bv: Arc<BitVec<u64, Lsb0>>) -> Self;
 }
 
 impl RankSupport for RankSupportV<Pat1> {
     fn rank1(&self, idx: usize) -> usize {
         self.rank(idx)
+    }
+    fn serialize(&self, writer: &mut impl std::io::Write) {
+        RankSupportV::<Pat1>::serialize(self, writer);
+    }
+    fn load(reader: &mut impl std::io::Read, bv: Arc<BitVec<u64, Lsb0>>) -> Self {
+        RankSupportV::<Pat1>::load(reader, bv)
     }
 }
 
@@ -25,9 +34,13 @@ impl RankSupport for RankSupportV<Pat1> {
 pub trait SelectSupport {
     fn select1(&self, k: usize) -> Option<usize>;
     fn select0(&self, k: usize) -> Option<usize>;
+
+    fn serialize(&self, writer: &mut impl std::io::Write);
+    fn load(reader: &mut impl std::io::Read, bv: Arc<BitVec<u64, Lsb0>>) -> Self;
 }
 
-struct SelectSupportMcl0and1 {
+#[derive(Debug, Clone)]
+pub struct SelectSupportMcl0and1 {
     sel0: SelectSupportMcl<Sel0>,
     sel1: SelectSupportMcl<Sel1>,
 }
@@ -40,9 +53,21 @@ impl SelectSupport for SelectSupportMcl0and1 {
     fn select0(&self, k: usize) -> Option<usize> {
         Some(self.sel0.select(k)) // Will panic if k is larger than the number of zeros
     }
+
+    fn serialize(&self, mut writer: &mut impl std::io::Write) {
+        self.sel0.serialize(&mut writer);
+        self.sel1.serialize(writer);
+    }
+
+    fn load (reader: &mut impl std::io::Read, bv: Arc<BitVec<u64, Lsb0>>) -> Self {
+        let sel0 = SelectSupportMcl::<Sel0>::load(reader, bv.clone());
+        let sel1 = SelectSupportMcl::<Sel1>::load(reader, bv);
+        Self { sel0, sel1 }
+    }
 }
 
 
+#[derive(Debug, Clone)]
 struct Node<R, S> {
     lo: u32,
     hi: u32, // exclusive
@@ -54,6 +79,7 @@ struct Node<R, S> {
     right: Option<usize>,
 }
 
+#[derive(Debug, Clone)]
 pub struct WaveletTree<R, S> {
     nodes: Vec<Node<R, S>>,
     n: usize,
@@ -163,6 +189,23 @@ where
 
         let _root = build_rec(&mut wt, data, lo, hi, &mut build_rank, &mut build_sel);
         wt
+    }
+
+    pub fn serialize(&self, mut writer: &mut impl std::io::Write) {
+        bincode::serialize_into(&mut writer, &self.n).unwrap();
+        bincode::serialize_into(&mut writer, &self.lo).unwrap();
+        bincode::serialize_into(&mut writer, &self.hi).unwrap();
+        bincode::serialize_into(&mut writer, &(self.nodes.len() as u64)).unwrap();
+        for node in &self.nodes {
+            bincode::serialize_into(&mut writer, &node.lo).unwrap();
+            bincode::serialize_into(&mut writer, &node.hi).unwrap();
+            // Serialize the bitvector as raw bytes
+            let bits_bytes = node.bits.as_raw_slice();
+            bincode::serialize_into(&mut writer, &(bits_bytes.len() as u64)).unwrap();
+            writer.write_all(bytemuck::cast_slice(bits_bytes)).unwrap();
+            node.rank.serialize(&mut writer);
+            node.sel.serialize(&mut writer);
+        }
     }
 
     #[inline]
