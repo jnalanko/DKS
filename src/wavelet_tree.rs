@@ -1,4 +1,7 @@
 use bitvec::prelude::*;
+use bps_sada::traits::*;
+use bps_sada::rank_support_v::RankSupportV;
+use bps_sada::select_support_mcl::{self, SelectSupportMcl};
 
 /// Rank support: # of 1-bits in B[0..idx)
 pub trait RankSupport {
@@ -10,17 +13,39 @@ pub trait RankSupport {
     }
 }
 
+impl RankSupport for RankSupportV<Pat1> {
+    fn rank1(&self, idx: usize) -> usize {
+        self.rank(idx)
+    }
+}
+
 /// Select support: position of k-th bit (1-based k), returning 0-based position.
 pub trait SelectSupport {
     fn select1(&self, k: usize) -> Option<usize>;
     fn select0(&self, k: usize) -> Option<usize>;
 }
 
+struct SelectSupportMcl0and1 {
+    sel0: SelectSupportMcl<Sel0>,
+    sel1: SelectSupportMcl<Sel1>,
+}
+
+impl SelectSupport for SelectSupportMcl0and1 {
+    fn select1(&self, k: usize) -> Option<usize> {
+        Some(self.sel1.select(k)) // Will panic if k is larger than the number of ones
+    }
+
+    fn select0(&self, k: usize) -> Option<usize> {
+        Some(self.sel0.select(k)) // Will panic if k is larger than the number of zeros
+    }
+}
+
+
 struct Node<R, S> {
     lo: u32,
     hi: u32, // exclusive
     mid: u32,
-    bits: BitVec<usize, Lsb0>,
+    bits: BitVec<u64, Lsb0>,
     rank: R,
     sel: S,
     left: Option<usize>,
@@ -44,8 +69,8 @@ where
     /// `build_rank` and `build_sel` construct rank/select structures for each node's bitvector.
     pub fn new<FR, FS>(data: &[u32], lo: u32, hi: u32, mut build_rank: FR, mut build_sel: FS) -> Self
     where
-        FR: FnMut(&BitVec<usize, Lsb0>) -> R,
-        FS: FnMut(&BitVec<usize, Lsb0>) -> S,
+        FR: FnMut(&BitVec<u64, Lsb0>) -> R,
+        FS: FnMut(&BitVec<u64, Lsb0>) -> S,
     {
         assert!(lo < hi, "alphabet range must be non-empty");
         for &v in data {
@@ -70,14 +95,14 @@ where
         where
             R: RankSupport,
             S: SelectSupport,
-            FR: FnMut(&BitVec<usize, Lsb0>) -> R,
-            FS: FnMut(&BitVec<usize, Lsb0>) -> S,
+            FR: FnMut(&BitVec<u64, Lsb0>) -> R,
+            FS: FnMut(&BitVec<u64, Lsb0>) -> S,
         {
             let mid = lo + (hi - lo) / 2;
 
             // Leaf interval size 1.
             if hi - lo == 1 {
-                let bits = BitVec::<usize, Lsb0>::new();
+                let bits = BitVec::<u64, Lsb0>::new();
                 let rank = build_rank(&bits);
                 let sel = build_sel(&bits);
                 wt.nodes.push(Node {
@@ -93,7 +118,7 @@ where
                 return wt.nodes.len() - 1;
             }
 
-            let mut bits = BitVec::<usize, Lsb0>::with_capacity(seq.len());
+            let mut bits = BitVec::<u64, Lsb0>::with_capacity(seq.len());
             let mut left_vals = Vec::new();
             let mut right_vals = Vec::new();
             left_vals.reserve(seq.len());
@@ -324,67 +349,9 @@ where
 
 #[cfg(test)]
 mod stress {
+    use std::sync::Arc;
+
     use super::*;
-
-    // --- Naive rank/select for stress tests (same shape as before) ---
-
-    struct NaiveRank {
-        pref: Vec<usize>,
-    }
-    impl NaiveRank {
-        fn new(bits: &BitVec<usize, Lsb0>) -> Self {
-            let mut pref = Vec::with_capacity(bits.len() + 1);
-            pref.push(0);
-            let mut acc = 0usize;
-            for b in bits.iter().by_vals() {
-                if b {
-                    acc += 1;
-                }
-                pref.push(acc);
-            }
-            Self { pref }
-        }
-    }
-    impl RankSupport for NaiveRank {
-        fn rank1(&self, idx: usize) -> usize {
-            self.pref[idx]
-        }
-    }
-
-    struct NaiveSelect {
-        ones: Vec<usize>,
-        zeros: Vec<usize>,
-    }
-    impl NaiveSelect {
-        fn new(bits: &BitVec<usize, Lsb0>) -> Self {
-            let mut ones = Vec::new();
-            let mut zeros = Vec::new();
-            for (i, b) in bits.iter().by_vals().enumerate() {
-                if b {
-                    ones.push(i);
-                } else {
-                    zeros.push(i);
-                }
-            }
-            Self { ones, zeros }
-        }
-    }
-    impl SelectSupport for NaiveSelect {
-        fn select1(&self, k: usize) -> Option<usize> {
-            if k == 0 {
-                None
-            } else {
-                self.ones.get(k - 1).copied()
-            }
-        }
-        fn select0(&self, k: usize) -> Option<usize> {
-            if k == 0 {
-                None
-            } else {
-                self.zeros.get(k - 1).copied()
-            }
-        }
-    }
 
     // --- Deterministic RNG (fast, no deps) ---
 
@@ -548,7 +515,15 @@ mod stress {
         let k: u32 = 1 << 16; // 65536 alphabet -> log2(k)=16 levels
 
         let a = gen_adversarial_array(&mut rng, n, k);
-        let wt = WaveletTree::new(&a, 0, k, |bv| NaiveRank::new(bv), |bv| NaiveSelect::new(bv));
+
+        let wt = WaveletTree::new(
+            &a, 0, k, 
+            |bv| RankSupportV::<Pat1>::new(Arc::new(bv.clone())), 
+            |bv| SelectSupportMcl0and1 {
+                sel0: SelectSupportMcl::new(Arc::new(bv.clone())),
+                sel1: SelectSupportMcl::new(Arc::new(bv.clone()))
+            }
+        );
 
         // Query budget: mix of random and targeted
         let queries = 80_000usize;
