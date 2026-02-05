@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bitvec::prelude::*;
 use bps_sada::traits::*;
 use bps_sada::rank_support_v::RankSupportV;
@@ -45,7 +47,7 @@ struct Node<R, S> {
     lo: u32,
     hi: u32, // exclusive
     mid: u32,
-    bits: BitVec<u64, Lsb0>,
+    bits: Arc<BitVec<u64, Lsb0>>,
     rank: R,
     sel: S,
     left: Option<usize>,
@@ -69,8 +71,8 @@ where
     /// `build_rank` and `build_sel` construct rank/select structures for each node's bitvector.
     pub fn new<FR, FS>(data: &[u32], lo: u32, hi: u32, mut build_rank: FR, mut build_sel: FS) -> Self
     where
-        FR: FnMut(&BitVec<u64, Lsb0>) -> R,
-        FS: FnMut(&BitVec<u64, Lsb0>) -> S,
+        FR: FnMut(Arc<BitVec<u64, Lsb0>>) -> R,
+        FS: FnMut(Arc<BitVec<u64, Lsb0>>) -> S,
     {
         assert!(lo < hi, "alphabet range must be non-empty");
         for &v in data {
@@ -95,16 +97,16 @@ where
         where
             R: RankSupport,
             S: SelectSupport,
-            FR: FnMut(&BitVec<u64, Lsb0>) -> R,
-            FS: FnMut(&BitVec<u64, Lsb0>) -> S,
+            FR: FnMut(Arc<BitVec<u64, Lsb0>>) -> R,
+            FS: FnMut(Arc<BitVec<u64, Lsb0>>) -> S,
         {
             let mid = lo + (hi - lo) / 2;
 
             // Leaf interval size 1.
             if hi - lo == 1 {
-                let bits = BitVec::<u64, Lsb0>::new();
-                let rank = build_rank(&bits);
-                let sel = build_sel(&bits);
+                let bits = Arc::new(BitVec::<u64, Lsb0>::new());
+                let rank = build_rank(bits.clone());
+                let sel = build_sel(bits.clone());
                 wt.nodes.push(Node {
                     lo,
                     hi,
@@ -134,8 +136,10 @@ where
                 }
             }
 
-            let rank = build_rank(&bits);
-            let sel = build_sel(&bits);
+            let bits = Arc::new(bits);
+
+            let rank = build_rank(bits.clone());
+            let sel = build_sel(bits.clone());
 
             let node_idx = wt.nodes.len();
             wt.nodes.push(Node {
@@ -518,10 +522,10 @@ mod stress {
 
         let wt = WaveletTree::new(
             &a, 0, k, 
-            |bv| RankSupportV::<Pat1>::new(Arc::new(bv.clone())), 
+            RankSupportV::<Pat1>::new, 
             |bv| SelectSupportMcl0and1 {
-                sel0: SelectSupportMcl::new(Arc::new(bv.clone())),
-                sel1: SelectSupportMcl::new(Arc::new(bv.clone()))
+                sel0: SelectSupportMcl::new(bv.clone()),
+                sel1: SelectSupportMcl::new(bv.clone())
             }
         );
 
