@@ -25,9 +25,10 @@ pub enum ColorVecValue {
     None,
 } 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ColorStorage {
-    colors: BitVec::<usize, Lsb0>,
+    //colors: BitVec::<usize, Lsb0>,
+    colors: WaveletTree<RankSupportV, SelectBinarySearchOverRank>,
     bits_per_color: usize,
 }
 

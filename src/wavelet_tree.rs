@@ -467,6 +467,36 @@ where
                 .expect("select0 must exist for valid child position")
         }
     }
+
+    pub fn access(&self, i: usize) -> u32 {
+        assert!(i < self.n, "index out of bounds: {i} >= {}", self.n);
+
+        let mut node_idx = 0usize; // root is always 0 in this construction
+        let mut pos = i;
+
+        loop {
+            let node = &self.nodes[node_idx];
+
+            // Leaf: interval size 1 => the symbol is node.lo.
+            if node.hi - node.lo == 1 {
+                return node.lo;
+            }
+
+            // Decide direction by the bit at this node position.
+            // bit = 0 => left, bit = 1 => right
+            let bit = node.bits.get(pos).unwrap();
+
+            if *bit {
+                // Go right: map position to child coordinate via rank1
+                pos = node.rank.rank1(pos);
+                node_idx = node.right.expect("internal node must have right");
+            } else {
+                // Go left: map position to child coordinate via rank0
+                pos = node.rank.rank0(pos);
+                node_idx = node.left.expect("internal node must have left");
+            }
+        }
+    }
 }
 
 impl<R: RankSupport, S: SelectSupport> sbwt::ContractLeft for WaveletTree<R,S> {
