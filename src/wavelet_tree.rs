@@ -199,44 +199,65 @@ where
         for node in &self.nodes {
             bincode::serialize_into(&mut writer, &node.lo).unwrap();
             bincode::serialize_into(&mut writer, &node.hi).unwrap();
-            // Serialize the bitvector as raw bytes
-            let bits_bytes = node.bits.as_raw_slice();
-            bincode::serialize_into(&mut writer, &(bits_bytes.len() as u64)).unwrap();
-            writer.write_all(bytemuck::cast_slice(bits_bytes)).unwrap();
+            bincode::serialize_into(&mut writer, &node.mid).unwrap();
+            bincode::serialize_into(&mut writer, &(*node.bits)).unwrap();
             node.rank.serialize(&mut writer);
             node.sel.serialize(&mut writer);
+            match node.left {
+                Some(idx) => bincode::serialize_into(&mut writer, &idx).unwrap(),
+                None => bincode::serialize_into(&mut writer, &u64::MAX).unwrap(),
+            }
+            match node.right {
+                Some(idx) => bincode::serialize_into(&mut writer, &idx).unwrap(),
+                None => bincode::serialize_into(&mut writer, &u64::MAX).unwrap(),
+            }
+
         }
     }
 
     pub fn load(mut reader: &mut impl std::io::Read) -> Self {
-        let n: u64 = bincode::deserialize_from(&mut reader).unwrap();
+        let n: usize = bincode::deserialize_from(&mut reader).unwrap();
         let lo: u32 = bincode::deserialize_from(&mut reader).unwrap();
         let hi: u32 = bincode::deserialize_from(&mut reader).unwrap();
-        let n_nodes: u64 = bincode::deserialize_from(&mut reader).unwrap();
+        let nodes_len: u64 = bincode::deserialize_from(&mut reader).unwrap();
 
-        let mut nodes = Vec::with_capacity(n_nodes as usize);
-        for _ in 0..n_nodes {
+        let mut nodes = Vec::with_capacity(nodes_len as usize);
+        for _ in 0..nodes_len {
             let lo: u32 = bincode::deserialize_from(&mut reader).unwrap();
             let hi: u32 = bincode::deserialize_from(&mut reader).unwrap();
-            let bits_len_bytes: u64 = bincode::deserialize_from(&mut reader).unwrap();
-            let mut bits_bytes = vec![0u64; (bits_len_bytes as usize + 7) / 8];
-            reader.read_exact(bytemuck::cast_slice_mut(&mut bits_bytes)).unwrap();
-            let bits = Arc::new(BitVec::<u64, Lsb0>::from_slice(&bits_bytes));
+            let mid: u32 = bincode::deserialize_from(&mut reader).unwrap();
+            let bits: BitVec<u64, Lsb0> = bincode::deserialize_from(&mut reader).unwrap();
+            let bits = Arc::new(bits);
             let rank = R::load(&mut reader, bits.clone());
             let sel = S::load(&mut reader, bits.clone());
+
+            let left_idx: u64 = bincode::deserialize_from(&mut reader).unwrap();
+            let left = if left_idx == u64::MAX {
+                None
+            } else {
+                Some(left_idx as usize)
+            };
+
+            let right_idx: u64 = bincode::deserialize_from(&mut reader).unwrap();
+            let right = if right_idx == u64::MAX {
+                None
+            } else {
+                Some(right_idx as usize)
+            };
+
             nodes.push(Node {
                 lo,
                 hi,
-                mid: 0, // mid is not needed for queries, so we can skip storing it
+                mid,
                 bits,
                 rank,
                 sel,
-                left: None,
-                right: None,
+                left,
+                right,
             });
         }
 
-        Self { nodes, n: n as usize, lo, hi }
+        Self { nodes, n, lo, hi }
     }
 
     #[inline]
