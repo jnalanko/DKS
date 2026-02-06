@@ -223,12 +223,15 @@ where
 
         let mut nodes = Vec::with_capacity(nodes_len as usize);
         for _ in 0..nodes_len {
+            eprintln!("Loading node {}/{}", nodes.len() + 1, nodes_len);
             let lo: u32 = bincode::deserialize_from(&mut reader).unwrap();
             let hi: u32 = bincode::deserialize_from(&mut reader).unwrap();
             let mid: u32 = bincode::deserialize_from(&mut reader).unwrap();
             let bits: BitVec<u64, Lsb0> = bincode::deserialize_from(&mut reader).unwrap();
             let bits = Arc::new(bits);
+            eprintln!("Loading rank");
             let rank = R::load(&mut reader, bits.clone());
+            eprintln!("Loading select");
             let sel = S::load(&mut reader, bits.clone());
 
             let left_idx: u64 = bincode::deserialize_from(&mut reader).unwrap();
@@ -245,6 +248,7 @@ where
                 Some(right_idx as usize)
             };
 
+            eprintln!("Loaded node: lo={}, hi={}, mid={}, bits_len={}, left={:?}, right={:?}", lo, hi, mid, bits.len(), left, right);
             nodes.push(Node {
                 lo,
                 hi,
