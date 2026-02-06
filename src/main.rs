@@ -6,7 +6,7 @@ use io::LazyFileSeqStream;
 use jseqio::reader::DynamicFastXReader;
 use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
-use parallel_queries::OutputFormat;
+use parallel_queries::{TsvWriter, BedWriter};
 
 mod single_colored_kmers;
 mod io;
@@ -66,10 +66,10 @@ pub enum Subcommands {
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
 
-        #[arg(help = "Output in BED format instead of TSV. Requires --colors.", long)]
+        #[arg(help = "Output in BED format instead of TSV. Requires --colors.", long, requires = "colors")]
         bed: bool,
 
-        #[arg(help = "A tab-separated file with two columns: color_rank and color_name. Required when --bed is set.", long)]
+        #[arg(help = "A tab-separated file with two columns: color_rank and color_name. Required when --bed is set.", long, requires = "bed")]
         colors: Option<PathBuf>,
     },
 
@@ -176,8 +176,15 @@ fn main() {
             let index = SingleColoredKmers::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
 
-            let output_format = if bed {
-                let colors_path = colors.expect("--colors is required when --bed is set");
+            log::info!("Running queries from {} ...", query_path.display());
+            let reader = DynamicFastXReader::from_file(&query_path).unwrap();
+            let reader = DynamicFastXReaderWrapper { inner: reader };
+
+            // 128kb = 2^17 byte buffer
+            let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
+
+            if bed {
+                let colors_path = colors.unwrap(); // Safe: clap ensures --colors is present when --bed is set
 
                 // First pass: collect sequence names from query FASTA/FASTQ
                 let mut name_reader = DynamicFastXReader::from_file(&query_path).unwrap();
@@ -209,22 +216,12 @@ fn main() {
                 }
                 log::info!("Loaded {} color names from {}", color_names.len(), colors_path.display());
 
-                OutputFormat::Bed { seq_names, color_names }
+                let writer = BedWriter::new(stdout, seq_names, color_names);
+                parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, writer);
             } else {
-                if colors.is_some() {
-                    log::warn!("--colors is ignored without --bed");
-                }
-                OutputFormat::Tsv
+                let writer = TsvWriter::new(stdout);
+                parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, writer);
             };
-
-            log::info!("Running queries from {} ...", query_path.display());
-            let reader = DynamicFastXReader::from_file(&query_path).unwrap();
-            let reader = DynamicFastXReaderWrapper { inner: reader };
-
-            // 128kb = 2^17 byte buffer
-            let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
-
-            parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, stdout, output_format);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
