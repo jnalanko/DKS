@@ -91,6 +91,47 @@ impl SelectSupport for SelectBinarySearchOverRank {
 }
 
 
+// Both select 0 and select 1
+#[derive(Debug, Clone)]
+pub struct SelectSupportBoth {
+    pub ss0: SelectSupportMcl::<Sel0>,
+    pub ss1: SelectSupportMcl::<Sel1>,
+}
+
+impl SelectSupportBoth {
+    pub fn new(bv: Arc<BitVec<u64, Lsb0>>) -> Self {
+        Self {
+            ss0: SelectSupportMcl::<Sel0>::new(bv.clone()),
+            ss1: SelectSupportMcl::<Sel1>::new(bv.clone()),
+        }
+    }
+}
+
+impl SelectSupport for SelectSupportBoth {
+
+    fn select0(&self, k: usize) -> Option<usize> {
+        Some(self.ss0.select(k)) // Panics if k is larger than the number of 0-bits
+    }
+
+    fn select1(&self, k: usize) -> Option<usize> {
+        Some(self.ss1.select(k)) // Panics if k is larger than the number of 1-bits
+    }
+
+    fn serialize(&self, writer: &mut impl std::io::Write) {
+        self.ss0.serialize(writer);
+        self.ss1.serialize(writer);
+    }
+
+    fn load(reader: &mut impl std::io::Read, bv: Arc<BitVec<u64, Lsb0>>) -> Self {
+        let ss0 = SelectSupportMcl::<Sel0>::load(reader, bv.clone());
+        let ss1 = SelectSupportMcl::<Sel1>::load(reader, bv.clone());
+        Self { ss0, ss1 }
+    }
+}
+
+
+
+
 #[derive(Debug, Clone)]
 struct Node<R, S> {
     lo: u32,
