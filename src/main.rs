@@ -57,7 +57,7 @@ pub enum Subcommands {
 
     #[command(arg_required_else_help = true)]
     Lookup {
-        #[arg(help = "A file with one fasta/fastq filename per line", short, long, required = true)]
+        #[arg(help = "A fasta/fastq query file", short, long, required = true)]
         query: PathBuf,
 
         #[arg(help = "Path to the index file", short, long, required = true)]
@@ -75,7 +75,7 @@ pub enum Subcommands {
 
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
     LookupDebug {
-        #[arg(help = "A file with one fasta/fastq filename per line", short, long, required = true)]
+        #[arg(help = "A fasta/fastq query file", short, long, required = true)]
         query: PathBuf,
 
         #[arg(help = "Path to the index file", short, long, required = true)]
@@ -106,20 +106,25 @@ fn main() {
 
     match args.command {
         Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path} => {
-            let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof).unwrap()).lines().map(|f| PathBuf::from(f.unwrap())).collect();
+            let input_paths: Vec<PathBuf> = BufReader::new(File::open(&input_fof)
+                .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", input_fof.display())))
+                .lines().map(|f| PathBuf::from(f.unwrap())).collect();
 
             // Create output directory if does not exist
             std::fs::create_dir_all(out_path.parent().unwrap()).unwrap();
-            let mut out = BufWriter::new(File::create(out_path.clone()).unwrap());
+            let mut out = BufWriter::new(File::create(out_path.clone())
+                .unwrap_or_else(|e| panic!("Could not create output file {}: {e}", out_path.display())));
 
             let add_rev_comps = !forward_only;
 
             let (sbwt, lcs) = if let Some(sbwt_path) = sbwt_path {
-                let mut input = BufReader::new(File::open(sbwt_path).unwrap());
+                let mut input = BufReader::new(File::open(&sbwt_path)
+                    .unwrap_or_else(|e| panic!("Could not open SBWT file {}: {e}", sbwt_path.display())));
                 let sbwt::SbwtIndexVariant::SubsetMatrix(sbwt) = sbwt::load_sbwt_index_variant(&mut input).unwrap();
                 log::info!("Loaded SBWT with {} k-mers", sbwt.n_kmers());
                 let lcs = if let Some(lcs_path) = lcs_path {
-                    LcsArray::load(&mut BufReader::new(File::open(lcs_path).unwrap())).unwrap()
+                    LcsArray::load(&mut BufReader::new(File::open(&lcs_path)
+                        .unwrap_or_else(|e| panic!("Could not open LCS file {}: {e}", lcs_path.display())))).unwrap()
                 } else {
                     LcsArray::from_sbwt(&sbwt, n_threads)
                 };
@@ -170,7 +175,8 @@ fn main() {
 
         Subcommands::Lookup{query: query_path, index: index_path, n_threads, bed, colors} => {
             log::info!("Loading the index ...");
-            let mut index_input = BufReader::new(File::open(index_path).unwrap());
+            let mut index_input = BufReader::new(File::open(&index_path)
+                .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
 
             let index_loading_start = std::time::Instant::now();
             let index = SingleColoredKmers::load(&mut index_input);
@@ -235,7 +241,8 @@ fn main() {
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
             log::info!("Loading the index ...");
-            let mut index_input = BufReader::new(File::open(index_path).unwrap());
+            let mut index_input = BufReader::new(File::open(&index_path)
+                .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
 
             let index_loading_start = std::time::Instant::now();
             let index = SingleColoredKmers::load(&mut index_input);

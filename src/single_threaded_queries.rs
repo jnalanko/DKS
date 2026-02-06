@@ -17,7 +17,8 @@ fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {
 
 pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers){
 
-    let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
+    let mut reader = DynamicFastXReader::from_file(&query_path)
+        .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
     let mut seq_id = 0_usize;
 
     println!("seq_rank\tfrom_kmer\tto_kmer\tcolor");
