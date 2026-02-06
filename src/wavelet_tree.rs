@@ -40,29 +40,52 @@ pub trait SelectSupport {
 }
 
 #[derive(Debug, Clone)]
-pub struct SelectSupportMcl0and1 {
-    pub sel0: SelectSupportMcl<Sel0>,
-    pub sel1: SelectSupportMcl<Sel1>,
+pub struct SelectBinarySearchOverRank {
+    pub rs: RankSupportV<Pat1>,
 }
 
-impl SelectSupport for SelectSupportMcl0and1 {
+impl SelectSupport for SelectBinarySearchOverRank {
     fn select1(&self, k: usize) -> Option<usize> {
-        Some(self.sel1.select(k)) // Will panic if k is larger than the number of ones
+        let mut pos = 0;
+        let n = self.rs.get_vector().as_ref().unwrap().len();
+
+        if self.rs.rank1(n) < k { return None } // k is larger than the number of ones
+        
+        let mut step = n.next_power_of_two();
+        // We are looking for the largest position such that rank is smaller than k
+        while step > 0 {
+            if pos + step < n && self.rs.rank1(pos + step) < k {
+                pos += step;
+            }
+            step /= 2;
+        }
+        Some(pos)
     }
 
     fn select0(&self, k: usize) -> Option<usize> {
-        Some(self.sel0.select(k)) // Will panic if k is larger than the number of zeros
+        let mut pos = 0;
+        let n = self.rs.get_vector().as_ref().unwrap().len();
+
+        if self.rs.rank0(n) < k { return None } // k is larger than the number of zeros
+        
+        let mut step = n.next_power_of_two();
+        // We are looking for the largest position such that rank is smaller than k
+        while step > 0 {
+            if pos + step < n && self.rs.rank0(pos + step) < k {
+                pos += step;
+            }
+            step /= 2;
+        }
+        Some(pos)
     }
 
     fn serialize(&self, mut writer: &mut impl std::io::Write) {
-        self.sel0.serialize(&mut writer);
-        self.sel1.serialize(writer);
+        self.rs.serialize(&mut writer);
     }
 
     fn load (reader: &mut impl std::io::Read, bv: Arc<BitVec<u64, Lsb0>>) -> Self {
-        let sel0 = SelectSupportMcl::<Sel0>::load(reader, bv.clone());
-        let sel1 = SelectSupportMcl::<Sel1>::load(reader, bv);
-        Self { sel0, sel1 }
+        let rs = RankSupportV::load(reader, bv);
+        Self { rs }
     }
 }
 
@@ -639,9 +662,8 @@ mod stress {
         let wt = WaveletTree::new(
             &a, 0, k, 
             RankSupportV::<Pat1>::new, 
-            |bv| SelectSupportMcl0and1 {
-                sel0: SelectSupportMcl::new(bv.clone()),
-                sel1: SelectSupportMcl::new(bv.clone())
+            |bv| SelectBinarySearchOverRank {
+                rs : RankSupportV::<Pat1>::new(bv)
             }
         );
 

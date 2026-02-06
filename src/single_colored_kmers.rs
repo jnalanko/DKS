@@ -13,7 +13,7 @@ use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, Streaming
 use serde::{Deserialize, Serialize};
 use bps_sada::select_support_mcl::SelectSupportMcl;
 
-use crate::wavelet_tree::{RankSupport, SelectSupportMcl0and1, WaveletTree};
+use crate::wavelet_tree::{RankSupport, SelectBinarySearchOverRank, WaveletTree};
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
 const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
@@ -71,14 +71,14 @@ impl ColorStorage {
 #[derive(Debug, Clone)]
 pub struct SingleColoredKmers {
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
-    lcs: crate::wavelet_tree::WaveletTree<RankSupportV<Pat1>, SelectSupportMcl0and1>,
+    lcs: crate::wavelet_tree::WaveletTree<RankSupportV<Pat1>, SelectBinarySearchOverRank>,
     colors: ColorStorage,
     n_colors: usize,
 }
 
 pub struct KmerLookupIterator<'a, 'b> {
     // This iterator should be initialized so that the first k-1 MS values are skipped
-    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, WaveletTree<RankSupportV<Pat1>, SelectSupportMcl0and1>>,
+    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, WaveletTree<RankSupportV<Pat1>, SelectBinarySearchOverRank>>,
     index: &'a SingleColoredKmers,
 }
 
@@ -498,9 +498,8 @@ impl SingleColoredKmers {
         let lcs_vec: Vec<u32> = (0..sbwt.n_sets()).map(|i| lcs.access(i) as u32).collect();
         let wt = WaveletTree::new(&lcs_vec, 0, sbwt.k() as u32,
             RankSupportV::<Pat1>::new, 
-            |v| SelectSupportMcl0and1 {
-                sel0: SelectSupportMcl::new(v.clone()),
-                sel1: SelectSupportMcl::new(v.clone()),
+            |v| SelectBinarySearchOverRank {
+                rs: RankSupportV::<Pat1>::new(v)
             }
         );
 
