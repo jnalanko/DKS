@@ -128,7 +128,7 @@ fn print_run<W: Write>(out: &mut W, seq_id: isize, run_color: ColorVecValue, ran
                         writeln!(out, "{seq_name}\t{}\t{}\t{color_name}", range.start, range.end, ).unwrap();
                     },
                     ColorVecValue::Multiple => writeln!(out, "{seq_name}\t{}\t{}\t*", range.start, range.end).unwrap(),
-                    ColorVecValue::None => (), // Do not print runs of misses
+                    ColorVecValue::None => writeln!(out, "{seq_name}\t{}\t{}\tnovel", range.start, range.end).unwrap(),
                 }
             },
         }
