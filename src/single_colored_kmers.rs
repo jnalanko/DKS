@@ -330,17 +330,18 @@ impl SingleColoredKmers {
     }
 
     // Returns an iterator giving the color of each of the n-k+1 k-mers of the query.
+    // k must be less or equal to the k in the SBWT index.
     // If query is shorter than k, returns an empty.
-    pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8]) -> KmerLookupIterator<'a, 'b>{
-        let k = self.sbwt.k();
+    pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8], k: usize) -> KmerLookupIterator<'a, 'b>{
+        assert!(k <= self.sbwt.k());
         let si = StreamingIndex {
-            extend_right: &self.sbwt,
+            extend_right: &self.sbwt, 
             contract_left: &self.lcs,
             n: self.sbwt.n_sets(),
-            k
+            k: self.sbwt.k(), // Can be different than the k given as a parameter to this function!
         };
 
-        let mut ms_iter = si.matching_statistics_iter(query);
+        let mut ms_iter = si.bounded_matching_statistics_iter(query, k);
 
         // Skip over the first k-1 positions
         for _ in 0..k-1 {

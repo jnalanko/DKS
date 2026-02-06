@@ -49,14 +49,13 @@ impl QueryBatch {
     }
 
     fn run(self, index: &SingleColoredKmers) -> ProcessedQueryBatch {
-        let k = index.k();
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
-            acc + kmers_in_n(k, rec.seq.len()) 
+            acc + kmers_in_n(self.k, rec.seq.len()) 
         );
         let mut color_ids = Vec::<ColorVecValue>::with_capacity(total_query_kmers);
 
         for rec in self.seqs.iter() {
-            for color in index.lookup_kmers(rec.seq) {
+            for color in index.lookup_kmers(rec.seq, self.k) {
                 color_ids.push(color);
             }
         }
@@ -205,7 +204,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
 }
 
 // Batch size is in nucleotides (= bytes)
-pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize, mut out: impl Write + Send) {
+pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize, k: usize, mut out: impl Write + Send) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
@@ -218,11 +217,10 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
 
             // Reader thread that pushes batches for workers
 
-            let mut batch = QueryBatch::new(0, index.k()); // Initialize an empty batch
+            let mut batch = QueryBatch::new(0, k); // Initialize an empty batch
             while let Some(seq) = queries.stream_next() {
                 let n = seq.len();
                 let b = batch_size;
-                let k = index.k();
 
                 crate::util::process_kmers_in_pieces(seq, k, batch_size, |piece_idx, piece: &[u8]|{
                     batch.push(piece, piece_idx > 0);
@@ -230,7 +228,7 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
                     if batch.len() >= b {
                         // Swap the current batch with an empty batch, and send it to processing
                         let next_batch_id = batch.batch_id + 1;
-                        let mut batch_to_send = QueryBatch::new(next_batch_id, index.k()); // Empty batch
+                        let mut batch_to_send = QueryBatch::new(next_batch_id, k); // Empty batch
                         std::mem::swap(&mut batch, &mut batch_to_send);
                         batch_send.send(batch_to_send).unwrap();
                     }
@@ -423,7 +421,7 @@ mod tests {
 
         let out_vec = Vec::<u8>::new();
         let mut out = std::io::Cursor::new(out_vec);
-        lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, &mut out);
+        lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, k, &mut out);
 
         // Parse output tsv line by line
         let output_str = String::from_utf8(out.into_inner()).unwrap();

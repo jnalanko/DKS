@@ -175,7 +175,7 @@ fn main() {
             // 128kb = 2^17 byte buffer
             let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
 
-            parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, stdout);
+            parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, index.k(), stdout);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
@@ -186,7 +186,7 @@ fn main() {
             let index = SingleColoredKmers::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             log::info!("Running query debug implementation for {} ...", query_path.display());
-            single_threaded_queries::lookup_single_threaded(&query_path, &index);
+            single_threaded_queries::lookup_single_threaded(&query_path, &index, index.k());
 
         }
     } 

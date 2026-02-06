@@ -15,7 +15,7 @@ fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {
     }
 }
 
-pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers){
+pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers, k: usize){
 
     let mut reader = DynamicFastXReader::from_file(&query_path).unwrap();
     let mut seq_id = 0_usize;
@@ -25,7 +25,7 @@ pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers){
         let mut run_start: usize = 0;
         let mut run_color: ColorVecValue = ColorVecValue::None;
         let mut n_kmers = 0;
-        for (i, color) in index.lookup_kmers(rec.seq).enumerate() {
+        for (i, color) in index.lookup_kmers(rec.seq, k).enumerate() {
             if i == 0 { // Start a new run
                 run_start = i;
                 run_color = color;
