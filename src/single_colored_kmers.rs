@@ -80,6 +80,7 @@ pub struct KmerLookupIterator<'a, 'b> {
     // This iterator should be initialized so that the first k-1 MS values are skipped
     matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, WaveletTree<RankSupportV<Pat1>, SelectBinarySearchOverRank>>,
     index: &'a SingleColoredKmers,
+    length_bound: usize,
 }
 
 impl Iterator for KmerLookupIterator<'_, '_> {
@@ -88,10 +89,11 @@ impl Iterator for KmerLookupIterator<'_, '_> {
     fn next(&mut self) -> Option<Self::Item> {
         let (len, range) = self.matching_stats_iter.next()?;
 
-        if len == self.index.sbwt.k() {
+        if len == self.length_bound {
             // k-mer is found in the sbwt
-            debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
+            debug_assert!(self.length_bound < self.index.k() || range.len() == 1); // Full k-mer should have a singleton range
             let colex = range.start;
+            // TODO: here we should do a range distinct query
             Some(self.index.get_color(colex))
         } else {
             Some(ColorVecValue::None) // Iterator not finished but the k-mer is not found -> no color
@@ -347,7 +349,7 @@ impl SingleColoredKmers {
         for _ in 0..k-1 {
             ms_iter.next(); // If the iterator ends early, will keep returning None
         }
-        KmerLookupIterator { matching_stats_iter: ms_iter, index: self }
+        KmerLookupIterator { matching_stats_iter: ms_iter, index: self, length_bound: k}
 
     }
 
