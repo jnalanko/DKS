@@ -75,7 +75,8 @@ impl SimpleColorStorage {
         let ids: Vec<u32> = (0..self.colors.len() / self.bits_per_color)
             .map(|i| self.colors[i*self.bits_per_color .. (i+1)*self.bits_per_color].load_le())
             .collect();
-        let value_range_end = 2 << self.bits_per_color; // Exclusive end of the supported value range
+        let value_range_end = 1 << self.bits_per_color; // Exclusive end of the supported value range
+
         let wt = WaveletTree::<RankSupportV::<Pat1>, SelectBinarySearchOverRank>::new(&ids, 0, value_range_end,
             RankSupportV::new,
             |bv| SelectBinarySearchOverRank { rs: RankSupportV::new(bv) }
