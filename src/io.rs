@@ -12,7 +12,8 @@ pub struct ChainedInputStream{
 
 impl ChainedInputStream {
     pub fn new(filenames: Vec<PathBuf>) -> Self {
-        let first_file = filenames.first().map(|f| DynamicFastXReader::from_file(f).unwrap());
+        let first_file = filenames.first().map(|f| DynamicFastXReader::from_file(f)
+            .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", f.display())));
         Self {paths: filenames, cur_file: first_file, seq_buf: vec![], cur_file_idx: 0}
     }
 }
@@ -46,7 +47,8 @@ impl SeqStream for ChainedInputStream {
                 self.cur_file = if self.cur_file_idx == self.paths.len() {
                     None // All files procesed
                 } else {
-                    let new_file = DynamicFastXReader::from_file(&self.paths[self.cur_file_idx]).unwrap();
+                    let new_file = DynamicFastXReader::from_file(&self.paths[self.cur_file_idx])
+                        .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", self.paths[self.cur_file_idx].display()));
                     Some(new_file)
                 };
 
@@ -73,7 +75,8 @@ impl SeqStream for LazyFileSeqStream {
 
 
         if self.stream.is_none() {
-            self.stream = Some(DynamicFastXReader::from_file(&self.path).unwrap());
+            self.stream = Some(DynamicFastXReader::from_file(&self.path)
+                .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", self.path.display())));
         }
 
         let s = self.stream.as_mut().unwrap();
