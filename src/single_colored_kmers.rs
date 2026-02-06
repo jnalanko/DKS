@@ -1,4 +1,5 @@
 use std::io::{Read, Write};
+use std::ops::Range;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::time::{Duration, Instant};
 use std::sync::atomic::Ordering::Relaxed;
@@ -90,13 +91,34 @@ pub struct WTColorStorage {
 
 impl WTColorStorage {
     fn get_color(&self, colex: usize) -> ColorVecValue {
-        let x: usize = self.colors.access(colex) as usize;
+        let x = self.colors.access(colex) as usize;
         let none_id = self.colors.value_range().end-1; // Max value is reserved for None
         let multiple_id = none_id - 1; // Max - 1 is reserved for Multiple
         if x == none_id { 
             ColorVecValue::None
         } else if x == multiple_id { 
             ColorVecValue::Multiple
+        } else {
+            ColorVecValue::Single(x)
+        }
+    }
+
+    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
+        if range.is_empty() { return ColorVecValue::None }
+
+        let none_id = self.colors.value_range().end-1; // Max value is reserved for None
+        let multiple_id = none_id - 1; // Max - 1 is reserved for Multiple
+
+        // Can unwrap the range min because the range is non-empty
+        let x = self.colors.range_min(range.start, range.end).unwrap() as usize;
+        if x == none_id { return ColorVecValue::None; } // This works because the none is is the largest possible
+        else if x == multiple_id { return ColorVecValue::Multiple; }
+
+        // x is a single color id
+        let x_count = self.colors.range_rank(x as u32, range.start, range.end);
+        let none_count = self.colors.range_rank(none_id as u32, range.start, range.end);
+        if x_count + none_count < range.len() {
+            ColorVecValue::Multiple // There is another value distinct from x and none
         } else {
             ColorVecValue::Single(x)
         }
@@ -136,9 +158,7 @@ impl Iterator for KmerLookupIterator<'_, '_> {
         if len == self.length_bound {
             // k-mer is found in the sbwt
             debug_assert!(self.length_bound < self.index.k() || range.len() == 1); // Full k-mer should have a singleton range
-            let colex = range.start;
-            // TODO: here we should do a range distinct query
-            Some(self.index.get_color(colex))
+            Some(self.index.get_color(range))
         } else {
             Some(ColorVecValue::None) // Iterator not finished but the k-mer is not found -> no color
         }
@@ -370,9 +390,9 @@ impl SingleColoredKmers {
         self.n_colors
     }
     
-    pub fn get_color(&self, colex: usize) -> ColorVecValue {
-        assert!(colex < self.sbwt.n_sets());
-        self.colors.get_color(colex)
+    pub fn get_color(&self, colex_range: Range<usize>) -> ColorVecValue {
+        assert!(colex_range.end <= self.sbwt.n_sets());
+        self.colors.get_color_of_range(colex_range)
     }
 
     // Returns an iterator giving the color of each of the n-k+1 k-mers of the query.

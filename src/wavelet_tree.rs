@@ -499,6 +499,88 @@ where
         }
     }
 
+    pub fn range_min(&self, l: usize, r: usize) -> Option<u32> {
+        if l >= r || r > self.n {
+            return None;
+        }
+
+        let mut node_idx = 0usize; // root
+        let mut lcur = l;
+        let mut rcur = r;
+
+        loop {
+            let node = &self.nodes[node_idx];
+
+            // Leaf: interval size 1 => all values here are node.lo
+            if node.hi - node.lo == 1 {
+                return Some(node.lo);
+            }
+
+            // Map [lcur, rcur) to children coordinates
+            let l0 = node.rank.rank0(lcur);
+            let r0 = node.rank.rank0(rcur);
+
+            if l0 < r0 {
+                // There is at least one element on the left => min must be in left
+                node_idx = node.left.expect("internal node must have left");
+                lcur = l0;
+                rcur = r0;
+            } else {
+                // Left is empty in this range => go right
+                let l1 = node.rank.rank1(lcur);
+                let r1 = node.rank.rank1(rcur);
+                node_idx = node.right.expect("internal node must have right");
+                lcur = l1;
+                rcur = r1;
+            }
+        }
+    }
+
+    /// Number of occurrences of value `x` in data[0..i) in O(log k).
+    pub fn rank(&self, x: u32, i: usize) -> usize {
+        if i == 0 || i > self.n || x < self.lo || x >= self.hi {
+            return 0;
+        }
+
+        let mut node_idx = 0usize; // root
+        let mut pref = i;
+
+        loop {
+            let node = &self.nodes[node_idx];
+
+            // If x not in this node's value interval, nothing matches.
+            if x < node.lo || x >= node.hi {
+                return 0;
+            }
+
+            // Leaf: interval size 1 => all remaining are equal to x.
+            if node.hi - node.lo == 1 {
+                return pref;
+            }
+
+            if x < node.mid {
+                // Go left, count zeros
+                pref = node.rank.rank0(pref);
+                node_idx = node.left.expect("internal node must have left");
+            } else {
+                // Go right, count ones
+                pref = node.rank.rank1(pref);
+                node_idx = node.right.expect("internal node must have right");
+            }
+
+            if pref == 0 {
+                return 0;
+            }
+        }
+    }
+
+    pub fn range_rank(&self, x: u32, l: usize, r: usize) -> usize {
+        if l >= r {
+            return 0;
+        }
+        self.rank(x, r).saturating_sub(self.rank(x, l))
+    }
+
     pub fn value_range(&self) -> Range<usize> {
         self.lo as usize .. self.hi as usize
     }
