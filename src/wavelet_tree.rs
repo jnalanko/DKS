@@ -209,11 +209,10 @@ where
     }
 
     pub fn load(mut reader: &mut impl std::io::Read) -> Self {
-        let n_nodes: u64 = bincode::deserialize_from(&mut reader).unwrap();
+        let n: u64 = bincode::deserialize_from(&mut reader).unwrap();
         let lo: u32 = bincode::deserialize_from(&mut reader).unwrap();
         let hi: u32 = bincode::deserialize_from(&mut reader).unwrap();
-        let _n_nodes_check: u64 = bincode::deserialize_from(&mut reader).unwrap();
-        assert_eq!(n_nodes, _n_nodes_check);
+        let n_nodes: u64 = bincode::deserialize_from(&mut reader).unwrap();
 
         let mut nodes = Vec::with_capacity(n_nodes as usize);
         for _ in 0..n_nodes {
@@ -237,7 +236,7 @@ where
             });
         }
 
-        Self { nodes, n: n_nodes as usize, lo, hi }
+        Self { nodes, n: n as usize, lo, hi }
     }
 
     #[inline]

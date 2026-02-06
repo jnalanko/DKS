@@ -281,7 +281,7 @@ impl SingleColoredKmers {
 
     // This is used to identify the version of the serialization format
     fn serialization_version_number() -> u32 {
-        1_u32
+        2_u32
     }
 
     pub fn serialize(&self, mut out: &mut impl Write) {
