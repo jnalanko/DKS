@@ -176,10 +176,6 @@ fn main() {
             let index = SingleColoredKmers::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
 
-            log::info!("Running queries from {} ...", query_path.display());
-            let reader = DynamicFastXReader::from_file(&query_path).unwrap();
-            let reader = DynamicFastXReaderWrapper { inner: reader };
-
             // 128kb = 2^17 byte buffer
             let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
 
@@ -187,7 +183,9 @@ fn main() {
                 let colors_path = colors.unwrap(); // Safe: clap ensures --colors is present when --bed is set
 
                 // First pass: collect sequence names from query FASTA/FASTQ
-                let mut name_reader = DynamicFastXReader::from_file(&query_path).unwrap();
+                log::info!("Collecting sequence names from {} ...", query_path.display());
+                let mut name_reader = DynamicFastXReader::from_file(&query_path)
+                    .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
                 let mut seq_names = Vec::new();
                 while let Some(rec) = name_reader.read_next().unwrap() {
                     let header = std::str::from_utf8(rec.head).unwrap();
@@ -199,7 +197,8 @@ fn main() {
 
                 // Parse colors file (tab-separated: color_rank\tcolor_name)
                 let mut color_names = HashMap::new();
-                let colors_file = BufReader::new(File::open(&colors_path).unwrap());
+                let colors_file = BufReader::new(File::open(&colors_path)
+                    .unwrap_or_else(|e| panic!("Could not open colors file {}: {e}", colors_path.display())));
                 for line in colors_file.lines() {
                     let line = line.unwrap();
                     let line = line.trim();
@@ -216,9 +215,19 @@ fn main() {
                 }
                 log::info!("Loaded {} color names from {}", color_names.len(), colors_path.display());
 
+                log::info!("Running queries from {} ...", query_path.display());
+                let reader = DynamicFastXReader::from_file(&query_path)
+                    .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
+                let reader = DynamicFastXReaderWrapper { inner: reader };
+
                 let writer = BedWriter::new(stdout, seq_names, color_names);
                 parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, writer);
             } else {
+                log::info!("Running queries from {} ...", query_path.display());
+                let reader = DynamicFastXReader::from_file(&query_path)
+                    .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
+                let reader = DynamicFastXReaderWrapper { inner: reader };
+
                 let writer = TsvWriter::new(stdout);
                 parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, writer);
             };
