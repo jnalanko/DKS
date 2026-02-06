@@ -178,7 +178,15 @@ fn main() {
             // 128kb = 2^17 byte buffer
             let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
 
-            let k = k.unwrap_or(index.k());
+            let k = match k {
+                Some(k) => {
+                    assert!(k < index.k());
+                    k
+                },
+                None => {
+                    index.k()
+                }
+            };
             parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, k, stdout);
         },
 
