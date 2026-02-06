@@ -64,6 +64,9 @@ pub enum Subcommands {
 
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
+
+        #[arg(help = "Query k-mer length. Must be less or equal to the k used in index construction. If not given, defaults to the same k as during index construction.", short, required = false)]
+        k: Option<usize>,
     },
 
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
@@ -161,7 +164,7 @@ fn main() {
             log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
         },
 
-        Subcommands::Lookup{query: query_path, index: index_path, n_threads} => {
+        Subcommands::Lookup{query: query_path, index: index_path, n_threads, k} => {
             log::info!("Loading the index ...");
             let mut index_input = BufReader::new(File::open(index_path).unwrap());
 
@@ -175,7 +178,8 @@ fn main() {
             // 128kb = 2^17 byte buffer
             let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
 
-            parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, index.k(), stdout);
+            let k = k.unwrap_or(index.k());
+            parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, k, stdout);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
