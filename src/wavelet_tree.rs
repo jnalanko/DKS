@@ -1,3 +1,4 @@
+use std::ops::Range;
 use std::sync::Arc;
 
 use bitvec::prelude::*;
@@ -496,6 +497,10 @@ where
                 node_idx = node.left.expect("internal node must have left");
             }
         }
+    }
+
+    pub fn value_range(&self) -> Range<usize> {
+        self.lo as usize .. self.hi as usize
     }
 }
 

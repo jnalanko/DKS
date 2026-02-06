@@ -25,14 +25,13 @@ pub enum ColorVecValue {
     None,
 } 
 
-#[derive(Debug, Clone)]
-pub struct ColorStorage {
-    //colors: BitVec::<usize, Lsb0>,
-    colors: WaveletTree<RankSupportV, SelectBinarySearchOverRank>,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SimpleColorStorage {
+    colors: BitVec::<usize, Lsb0>,
     bits_per_color: usize,
 }
 
-impl ColorStorage {
+impl SimpleColorStorage {
     fn get_color(&self, colex: usize) -> ColorVecValue {
         let x: usize = self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le();
         if x == (1 << self.bits_per_color) - 1 { // Max value is reserved for None
@@ -58,7 +57,7 @@ impl ColorStorage {
 
     fn new(len: usize, n_colors: usize) -> Self {
         let bits_per_color = Self::required_bit_width(n_colors);
-        ColorStorage {
+        SimpleColorStorage {
             colors: bitvec![0; len * bits_per_color],
             bits_per_color,
         }
@@ -67,13 +66,57 @@ impl ColorStorage {
     fn required_bit_width(n_colors: usize) -> usize {
         log2_ceil(n_colors + 2) // +2 to reserve two special values: one for "no color" and one for "multiple colors"
     }
+
+    fn into_wavelet_tree_storage(self) -> WTColorStorage {
+        // TODO: we need to uncompress the color ids into u32 because the wavelet tree
+        // does not yet support constructing from an iterator of compact ids.
+        assert!(self.bits_per_color <= 32);
+        let ids: Vec<u32> = (0..self.colors.len() / self.bits_per_color)
+            .map(|i| self.colors[i*self.bits_per_color .. (i+1)*self.bits_per_color].load_le())
+            .collect();
+        let value_range_end = 2 << self.bits_per_color; // Exclusive end of the supported value range
+        let wt = WaveletTree::<RankSupportV::<Pat1>, SelectBinarySearchOverRank>::new(&ids, 0, value_range_end,
+            RankSupportV::new,
+            |bv| SelectBinarySearchOverRank { rs: RankSupportV::new(bv) }
+        );
+        WTColorStorage { colors: wt }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WTColorStorage {
+    colors: WaveletTree::<RankSupportV::<Pat1>, SelectBinarySearchOverRank>,
+}
+
+impl WTColorStorage {
+    fn get_color(&self, colex: usize) -> ColorVecValue {
+        let x: usize = self.colors.access(colex) as usize;
+        let none_id = self.colors.value_range().end-1; // Max value is reserved for None
+        let multiple_id = none_id - 1; // Max - 1 is reserved for Multiple
+        if x == none_id { 
+            ColorVecValue::None
+        } else if x == multiple_id { 
+            ColorVecValue::Multiple
+        } else {
+            ColorVecValue::Single(x)
+        }
+    }
+
+    fn serialize(&self, out: &mut impl Write) {
+        self.colors.serialize(out);
+    }
+
+    fn load(input: &mut impl Read) -> Self {
+        let colors = WaveletTree::load(input);
+        WTColorStorage { colors }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct SingleColoredKmers {
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
     lcs: crate::wavelet_tree::WaveletTree<RankSupportV<Pat1>, SelectBinarySearchOverRank>,
-    colors: ColorStorage,
+    colors: WTColorStorage,
     n_colors: usize,
 }
 
@@ -294,7 +337,7 @@ impl SingleColoredKmers {
         self.sbwt.serialize(out).unwrap();
         self.lcs.serialize(out);
 
-        bincode::serialize_into(&mut out, &self.colors).unwrap();
+        self.colors.serialize(&mut out);
         bincode::serialize_into(&mut out, &self.n_colors).unwrap();
     }
 
@@ -316,7 +359,7 @@ impl SingleColoredKmers {
         let sbwt = SbwtIndex::<sbwt::SubsetMatrix>::load(input).unwrap();
         let lcs = WaveletTree::load(input);
 
-        let colors = bincode::deserialize_from(&mut input).unwrap();
+        let colors = WTColorStorage::load(&mut input);
         let n_colors = bincode::deserialize_from(&mut input).unwrap();
 
         SingleColoredKmers{sbwt, lcs, colors, n_colors}
@@ -380,7 +423,7 @@ impl SingleColoredKmers {
 
 
     // Generic function that works on any of u8, 16, u32 and u64
-    fn mark_colors<T: SeqStream + Send, A: AtomicColorVec + Send + Sync>(sbwt: &sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: &sbwt::LcsArray,  input_streams: Vec<T>, n_threads: usize) -> ColorStorage {
+    fn mark_colors<T: SeqStream + Send, A: AtomicColorVec + Send + Sync>(sbwt: &sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: &sbwt::LcsArray,  input_streams: Vec<T>, n_threads: usize) -> SimpleColorStorage {
 
         let color_ids = A::new(sbwt.n_sets());
         let si = StreamingIndex::new(sbwt, lcs);
@@ -457,7 +500,7 @@ impl SingleColoredKmers {
 
         // Compress color_ids into a BitVec
         log::info!("Bitpacking color id array");
-        let mut compressed_colors = ColorStorage::new(sbwt.n_sets(), n_colors);
+        let mut compressed_colors = SimpleColorStorage::new(sbwt.n_sets(), n_colors);
         let mut total_single_count = 0_usize;
         let mut total_multiple_count = 0_usize;
         for i in 0..sbwt.n_sets() {
@@ -485,7 +528,7 @@ impl SingleColoredKmers {
 
         let n_colors = input_streams.len();
 
-        let required_bit_width = ColorStorage::required_bit_width(n_colors);
+        let required_bit_width = SimpleColorStorage::required_bit_width(n_colors);
 
         log::info!("Marking colors");
         let color_storage = if required_bit_width <= 8 {
@@ -508,7 +551,7 @@ impl SingleColoredKmers {
         );
 
         SingleColoredKmers{
-            sbwt, lcs: wt, n_colors, colors: color_storage
+            sbwt, lcs: wt, n_colors, colors: color_storage.into_wavelet_tree_storage()
         }
     }
 }
