@@ -1,11 +1,12 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf};
+use std::{collections::HashMap, fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf};
 use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
 use jseqio::reader::DynamicFastXReader;
 use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
+use parallel_queries::OutputFormat;
 
 mod single_colored_kmers;
 mod io;
@@ -64,6 +65,12 @@ pub enum Subcommands {
 
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
+
+        #[arg(help = "Output in BED format instead of TSV. Requires --colors.", long)]
+        bed: bool,
+
+        #[arg(help = "A tab-separated file with two columns: color_rank and color_name. Required when --bed is set.", long)]
+        colors: Option<PathBuf>,
     },
 
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
@@ -161,21 +168,63 @@ fn main() {
             log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
         },
 
-        Subcommands::Lookup{query: query_path, index: index_path, n_threads} => {
+        Subcommands::Lookup{query: query_path, index: index_path, n_threads, bed, colors} => {
             log::info!("Loading the index ...");
             let mut index_input = BufReader::new(File::open(index_path).unwrap());
 
             let index_loading_start = std::time::Instant::now();
             let index = SingleColoredKmers::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
+
+            let output_format = if bed {
+                let colors_path = colors.expect("--colors is required when --bed is set");
+
+                // First pass: collect sequence names from query FASTA/FASTQ
+                let mut name_reader = DynamicFastXReader::from_file(&query_path).unwrap();
+                let mut seq_names = Vec::new();
+                while let Some(rec) = name_reader.read_next().unwrap() {
+                    let header = std::str::from_utf8(rec.head).unwrap();
+                    // Take the first whitespace-delimited token as the sequence name
+                    let name = header.split_whitespace().next().unwrap_or(header);
+                    seq_names.push(name.to_string());
+                }
+                log::info!("Collected {} sequence names from query file", seq_names.len());
+
+                // Parse colors file (tab-separated: color_rank\tcolor_name)
+                let mut color_names = HashMap::new();
+                let colors_file = BufReader::new(File::open(&colors_path).unwrap());
+                for line in colors_file.lines() {
+                    let line = line.unwrap();
+                    let line = line.trim();
+                    if line.is_empty() { continue; }
+                    let mut fields = line.split('\t');
+                    let rank: usize = fields.next()
+                        .unwrap_or_else(|| panic!("Missing color_rank in colors file"))
+                        .parse()
+                        .unwrap_or_else(|e| panic!("Invalid color_rank in colors file: {e}"));
+                    let name = fields.next()
+                        .unwrap_or_else(|| panic!("Missing color_name in colors file"))
+                        .to_string();
+                    color_names.insert(rank, name);
+                }
+                log::info!("Loaded {} color names from {}", color_names.len(), colors_path.display());
+
+                OutputFormat::Bed { seq_names, color_names }
+            } else {
+                if colors.is_some() {
+                    log::warn!("--colors is ignored without --bed");
+                }
+                OutputFormat::Tsv
+            };
+
             log::info!("Running queries from {} ...", query_path.display());
             let reader = DynamicFastXReader::from_file(&query_path).unwrap();
-            let reader = DynamicFastXReaderWrapper { inner: reader }; 
+            let reader = DynamicFastXReaderWrapper { inner: reader };
 
             // 128kb = 2^17 byte buffer
             let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
 
-            parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, stdout);
+            parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, stdout, output_format);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {

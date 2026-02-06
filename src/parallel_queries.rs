@@ -1,6 +1,14 @@
-use std::{cmp::{max, Reverse}, io::Write, ops::Range};
+use std::{cmp::{max, Reverse}, collections::HashMap, io::Write, ops::Range};
 use jseqio::seq_db::SeqDB;
 use crate::single_colored_kmers::{ColorVecValue, SingleColoredKmers};
+
+pub enum OutputFormat {
+    Tsv,
+    Bed {
+        seq_names: Vec<String>,
+        color_names: HashMap<usize, String>,
+    },
+}
 
 
 struct QueryBatch {
@@ -100,18 +108,34 @@ struct OutputState {
     run_color: ColorVecValue, 
 }
 
-fn print_run<W: Write>(out: &mut W, seq_id: isize, run_color: ColorVecValue, range: Range<usize>) {
+fn print_run<W: Write>(out: &mut W, seq_id: isize, run_color: ColorVecValue, range: Range<usize>, format: &OutputFormat) {
     // This code is almost duplicated in single_threaded_queries.rs
     if !range.is_empty() {
-        match run_color {
-            ColorVecValue::Single(c) => writeln!(out, "{seq_id}\t{}\t{}\t{}", range.start, range.end-1, c).unwrap(),
-            ColorVecValue::Multiple => writeln!(out, "{seq_id}\t{}\t{}\t*", range.start, range.end-1).unwrap(),
-            ColorVecValue::None => (), // Do not print runs of misses
+        match format {
+            OutputFormat::Tsv => {
+                match run_color {
+                    ColorVecValue::Single(c) => writeln!(out, "{seq_id}\t{}\t{}\t{}", range.start, range.end-1, c).unwrap(),
+                    ColorVecValue::Multiple => writeln!(out, "{seq_id}\t{}\t{}\t*", range.start, range.end-1).unwrap(),
+                    ColorVecValue::None => (), // Do not print runs of misses
+                }
+            },
+            OutputFormat::Bed { seq_names, color_names } => {
+                let seq_name = &seq_names[seq_id as usize];
+                match run_color {
+                    ColorVecValue::Single(c) => {
+                        let color_name = color_names.get(&c)
+                            .unwrap_or_else(|| panic!("Color rank {c} not found in colors file"));
+                        writeln!(out, "{seq_name}\t{}\t{}\t{color_name}", range.start, range.end, ).unwrap();
+                    },
+                    ColorVecValue::Multiple => writeln!(out, "{seq_name}\t{}\t{}\t*", range.start, range.end).unwrap(),
+                    ColorVecValue::None => (), // Do not print runs of misses
+                }
+            },
         }
     }
 }
 
-fn output_batch_result<W: Write>(batch: &ProcessedQueryBatch, state: &mut OutputState, out: &mut W) {
+fn output_batch_result<W: Write>(batch: &ProcessedQueryBatch, state: &mut OutputState, out: &mut W, format: &OutputFormat) {
 
     let cur_seq_id = &mut state.cur_seq_id;
     let run_open = &mut state.run_open;
@@ -123,7 +147,7 @@ fn output_batch_result<W: Write>(batch: &ProcessedQueryBatch, state: &mut Output
         while starts_ptr.peek().is_some_and(|&&s| s == i) {
             // New sequence starts. This closes the currently open run, if exists
             if let Some(p) = run_open {
-                print_run(out, *cur_seq_id, *run_color, *p..(*p + *run_len));
+                print_run(out, *cur_seq_id, *run_color, *p..(*p + *run_len), format);
                 *run_open = None;
                 *run_len = 0;
             }
@@ -132,20 +156,20 @@ fn output_batch_result<W: Write>(batch: &ProcessedQueryBatch, state: &mut Output
         }
 
         match run_open {
-            None => { 
+            None => {
                 // We are at the start of a sequence -> open a new run
                 *run_open = Some(0);
                 *run_len = 1;
                 *run_color = *color;
             },
-            Some(p) => { 
+            Some(p) => {
                 // See if we can extend the current run
                 if *run_color == *color {
                     // Extend
-                    *run_len += 1; 
+                    *run_len += 1;
                 } else {
                     // Run ends
-                    print_run(out, *cur_seq_id, *run_color, *p .. (*p + *run_len));
+                    print_run(out, *cur_seq_id, *run_color, *p .. (*p + *run_len), format);
                     *run_open = Some(*p + *run_len);
                     *run_len = 1;
                     *run_color = *color;
@@ -157,7 +181,7 @@ fn output_batch_result<W: Write>(batch: &ProcessedQueryBatch, state: &mut Output
 }
 
 // Returns the total number of k-mers in all the received batches
-fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch>, out: &mut W) -> usize {
+fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch>, out: &mut W, format: &OutputFormat) -> usize {
     let mut batch_buffer = std::collections::BinaryHeap::<Reverse<ProcessedQueryBatch>>::new(); // Reverse makes it a min heap
     let mut n_kmers_processed = 0_usize;
     let mut next_batch_id = 0_usize;
@@ -168,8 +192,10 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
         run_len: 0,
         run_color: ColorVecValue::None,
     };
-    
-    writeln!(out, "seq_rank\tfrom_kmer\tto_kmer\tcolor").unwrap();
+
+    if matches!(format, OutputFormat::Tsv) {
+        writeln!(out, "seq_rank\tfrom_kmer\tto_kmer\tcolor").unwrap();
+    }
     while let Ok(batch) = query_results.recv() {
         batch_buffer.push(Reverse(batch)); // Reverse makes this a min heap
 
@@ -178,7 +204,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
             if let Some(min_batch) = min_batch {
                 let min_batch = &min_batch.0; // Unwrap from Reverse
                 if min_batch.batch_id == next_batch_id {
-                    output_batch_result(min_batch, &mut output_state, out);
+                    output_batch_result(min_batch, &mut output_state, out, format);
                     n_kmers_processed += min_batch.result.len();
                     batch_buffer.pop();
                     next_batch_id += 1;
@@ -197,7 +223,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
     // The last run of the last batch remains open (unless it's closed by the start of a
     // sequence that has no k-mers). Let's write it.
     if let Some(p) = output_state.run_open {
-        print_run(out, output_state.cur_seq_id, output_state.run_color, p..(p+output_state.run_len));
+        print_run(out, output_state.cur_seq_id, output_state.run_color, p..(p+output_state.run_len), format);
     }
 
     n_kmers_processed
@@ -205,7 +231,7 @@ fn output_thread<W: Write>(query_results: crossbeam::channel::Receiver<Processed
 }
 
 // Batch size is in nucleotides (= bytes)
-pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize, mut out: impl Write + Send) {
+pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize, mut out: impl Write + Send, format: OutputFormat) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
@@ -247,7 +273,7 @@ pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Sen
         });
 
         let writer_handle = s.spawn(|| {
-            let n_kmers = output_thread(output_recv, &mut out); // Returns number of k-mers processed
+            let n_kmers = output_thread(output_recv, &mut out, &format); // Returns number of k-mers processed
             out.flush().unwrap(); // They say this needs to be done because errors during drop are ignored
             n_kmers
         });
@@ -288,7 +314,7 @@ mod tests {
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream};
 
-    use crate::{parallel_queries::lookup_parallel, single_colored_kmers::SingleColoredKmers};
+    use crate::{parallel_queries::{lookup_parallel, OutputFormat}, single_colored_kmers::SingleColoredKmers};
 
     struct SingleSeqStream {
         seq: Vec<u8>,
@@ -423,7 +449,7 @@ mod tests {
 
         let out_vec = Vec::<u8>::new();
         let mut out = std::io::Cursor::new(out_vec);
-        lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, &mut out);
+        lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, &mut out, OutputFormat::Tsv);
 
         // Parse output tsv line by line
         let output_str = String::from_utf8(out.into_inner()).unwrap();
