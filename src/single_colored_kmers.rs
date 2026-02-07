@@ -6,13 +6,12 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
-use bps_sada::rank_support_v::RankSupportV;
-use bps_sada::traits::Pat1;
+use bitvec_sds::rank_support_v::RankSupportV;
+use bitvec_sds::traits::Pat1;
 use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
 use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use serde::{Deserialize, Serialize};
-use bps_sada::select_support_mcl::SelectSupportMcl;
 
 use crate::wavelet_tree::{RankSupport, SelectBinarySearchOverRank, SelectSupportBoth, WaveletTree};
 

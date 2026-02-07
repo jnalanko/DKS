@@ -2,9 +2,9 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use bitvec::prelude::*;
-use bps_sada::traits::*;
-use bps_sada::rank_support_v::RankSupportV;
-use bps_sada::select_support_mcl::{self, SelectSupportMcl};
+use bitvec_sds::traits::*;
+use bitvec_sds::rank_support_v::RankSupportV;
+use bitvec_sds::select_support_mcl::{self, SelectSupportMcl};
 
 /// Rank support: # of 1-bits in B[0..idx)
 pub trait RankSupport {
