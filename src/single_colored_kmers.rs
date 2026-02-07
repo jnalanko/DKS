@@ -565,10 +565,16 @@ impl SingleColoredKmers {
         };
 
         let lcs = LcsWrapper{inner: lcs};
-        let wt = WaveletTree::new(lcs, sbwt.k());
 
+        log::info!("Building LCS wavelet tree");
+        let lcs_wt = WaveletTree::new(lcs, sbwt.k());
+
+        log::info!("Building Color id wavelet tree");
+        let colors_wt = color_storage.into_wavelet_tree_storage();
+
+        log::info!("Color structure construction complete");
         SingleColoredKmers{
-            sbwt, lcs: wt, n_colors, colors: color_storage.into_wavelet_tree_storage()
+            sbwt, lcs: lcs_wt, n_colors, colors: colors_wt,
         }
     }
 }
