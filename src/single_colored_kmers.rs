@@ -114,7 +114,7 @@ impl WTColorStorage {
 
         // Can unwrap the range min because the range is non-empty
         let x = self.colors.range_min(range.start, range.end).unwrap() as usize;
-        if x == none_id { return ColorVecValue::None; } // This works because the none is is the largest possible
+        if x == none_id { return ColorVecValue::None; } // This works because the none is the largest possible
         else if x == multiple_id { return ColorVecValue::Multiple; }
 
         // x is a single color id
