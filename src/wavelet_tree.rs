@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RankSupport, SelectSupport}, wavelet_tree::SelectSupportBoth};
+use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RandomAccessU32, RankSupport, SelectSupport}, wavelet_tree::SelectSupportBoth};
 
 /// Wrapper for a bitvec_sds Wavelet tree. We need to wrap it so that we can
 /// implement the foreign ContracLeft trait for it.
@@ -10,7 +10,7 @@ pub struct WaveletTree {
 }
 
 impl WaveletTree {
-    pub fn new(elements: &[u32], n_values_supported: usize) -> Self {
+    pub fn new(elements: impl RandomAccessU32, n_values_supported: usize) -> Self {
         let inner = bitvec_sds::wavelet_tree::WaveletTree::<RankSupportV::<Pat1>, SelectSupportBoth>::new(&elements, 0, n_values_supported as u32,
             RankSupportV::new,
             SelectSupportBoth::new

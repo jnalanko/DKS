@@ -32,6 +32,16 @@ pub struct SimpleColorStorage {
     bits_per_color: usize,
 }
 
+impl bitvec_sds::traits::RandomAccessU32 for SimpleColorStorage {
+    fn len(&self) -> usize {
+        self.colors.len() / self.bits_per_color
+    }
+
+    fn get(&self, idx: usize) -> u32 {
+        self.colors[idx*self.bits_per_color .. (idx+1)*self.bits_per_color].load_le()
+    }
+}
+
 impl SimpleColorStorage {
     fn get_color(&self, colex: usize) -> ColorVecValue {
         let x: usize = self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le();
@@ -69,15 +79,10 @@ impl SimpleColorStorage {
     }
 
     fn into_wavelet_tree_storage(self) -> WTColorStorage {
-        // TODO: we need to uncompress the color ids into u32 because the wavelet tree
-        // does not yet support constructing from an iterator of compact ids.
         assert!(self.bits_per_color <= 32);
-        let ids: Vec<u32> = (0..self.colors.len() / self.bits_per_color)
-            .map(|i| self.colors[i*self.bits_per_color .. (i+1)*self.bits_per_color].load_le())
-            .collect();
         let value_range_end = 1 << self.bits_per_color; // Exclusive end of the supported value range
 
-        let wt = crate::wavelet_tree::WaveletTree::new(&ids, value_range_end);
+        let wt = crate::wavelet_tree::WaveletTree::new(self, value_range_end);
         WTColorStorage { colors: wt }
     }
 }
