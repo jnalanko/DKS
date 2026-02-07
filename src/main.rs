@@ -180,7 +180,7 @@ fn main() {
 
             let k = match k {
                 Some(k) => {
-                    assert!(k < index.k());
+                    assert!(k <= index.k());
                     k
                 },
                 None => {
