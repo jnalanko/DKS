@@ -8,10 +8,13 @@ use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
 use bitvec_sds::rank_support_v::RankSupportV;
 use bitvec_sds::traits::Pat1;
+//use bitvec_sds::wavelet_tree::{SelectSupportBoth, WaveletTree};
 use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
 use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use serde::{Deserialize, Serialize};
+
+use crate::wavelet_tree::WaveletTree;
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
 const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
@@ -74,17 +77,14 @@ impl SimpleColorStorage {
             .collect();
         let value_range_end = 1 << self.bits_per_color; // Exclusive end of the supported value range
 
-        let wt = WaveletTree::<RankSupportV::<Pat1>, SelectBinarySearchOverRank>::new(&ids, 0, value_range_end,
-            RankSupportV::new,
-            |bv| SelectBinarySearchOverRank { rs: RankSupportV::new(bv) }
-        );
+        let wt = crate::wavelet_tree::WaveletTree::new(&ids, value_range_end);
         WTColorStorage { colors: wt }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct WTColorStorage {
-    colors: WaveletTree::<RankSupportV::<Pat1>, SelectBinarySearchOverRank>,
+    colors: crate::wavelet_tree::WaveletTree,
 }
 
 impl WTColorStorage {
@@ -135,14 +135,14 @@ impl WTColorStorage {
 #[derive(Debug, Clone)]
 pub struct SingleColoredKmers {
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
-    lcs: crate::wavelet_tree::WaveletTree<RankSupportV<Pat1>, SelectSupportBoth>,
+    lcs: WaveletTree,
     colors: WTColorStorage,
     n_colors: usize,
 }
 
 pub struct KmerLookupIterator<'a, 'b> {
     // This iterator should be initialized so that the first k-1 MS values are skipped
-    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, WaveletTree<RankSupportV<Pat1>, SelectSupportBoth>>,
+    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, WaveletTree>,
     index: &'a SingleColoredKmers,
     length_bound: usize,
 }
@@ -561,10 +561,7 @@ impl SingleColoredKmers {
 
         // Unpack LCS array to u32. TODO: keep it compressed.
         let lcs_vec: Vec<u32> = (0..sbwt.n_sets()).map(|i| lcs.access(i) as u32).collect();
-        let wt = WaveletTree::new(&lcs_vec, 0, sbwt.k() as u32,
-            RankSupportV::<Pat1>::new, 
-            SelectSupportBoth::new, 
-        );
+        let wt = WaveletTree::new(&lcs_vec, sbwt.k());
 
         SingleColoredKmers{
             sbwt, lcs: wt, n_colors, colors: color_storage.into_wavelet_tree_storage()
