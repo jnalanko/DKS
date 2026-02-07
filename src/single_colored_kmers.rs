@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering::Relaxed;
 use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
 use bitvec_sds::rank_support_v::RankSupportV;
-use bitvec_sds::traits::Pat1;
+use bitvec_sds::traits::{Pat1, RandomAccessU32};
 //use bitvec_sds::wavelet_tree::{SelectSupportBoth, WaveletTree};
 use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
@@ -564,13 +564,27 @@ impl SingleColoredKmers {
             SingleColoredKmers::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads)
         };
 
-        // Unpack LCS array to u32. TODO: keep it compressed.
-        let lcs_vec: Vec<u32> = (0..sbwt.n_sets()).map(|i| lcs.access(i) as u32).collect();
-        let wt = WaveletTree::new(&lcs_vec, sbwt.k());
+        let lcs = LcsWrapper{inner: lcs};
+        let wt = WaveletTree::new(lcs, sbwt.k());
 
         SingleColoredKmers{
             sbwt, lcs: wt, n_colors, colors: color_storage.into_wavelet_tree_storage()
         }
+    }
+}
+
+// Wrapper so that we can implement the foreing trait RandomAccessU32
+struct LcsWrapper {
+    inner: LcsArray
+}
+
+impl RandomAccessU32 for LcsWrapper {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    fn get(&self, idx: usize) -> u32 {
+        self.inner.access(idx) as u32
     }
 }
 
