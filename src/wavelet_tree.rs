@@ -61,6 +61,10 @@ impl WaveletTree {
     pub fn range_distinct(&self, l: usize, r: usize, buf: &mut Vec<u32>) {
         self.inner.range_distinct(l, r, buf);
     }
+
+    pub fn range_bottom2(&self, l: usize, r: usize) -> (Option<u32>, Option<u32>) {
+        self.inner.range_bottom2(l, r)
+    }
 }
 impl sbwt::ContractLeft for WaveletTree {
     fn contract_left(&self, I: std::ops::Range<usize>, target_len: usize) -> std::ops::Range<usize> {

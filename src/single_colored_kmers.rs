@@ -112,24 +112,30 @@ impl WTColorStorage {
         let none_id = self.colors.value_range().end-1; // Max value is reserved for None
         let multiple_id = none_id - 1; // Max - 1 is reserved for Multiple
 
-        // Can unwrap the range min because the range is non-empty
-        let mut distinct_colors = Vec::<u32>::new();
-        self.colors.range_distinct(range.start, range.end, &mut distinct_colors);
+        let (a,b) = self.colors.range_bottom2(range.start, range.end);
 
-        let mut n_found = 0_usize;
-        for &color in distinct_colors.iter() {
-            if color as usize == multiple_id { return ColorVecValue::Multiple; }
-            n_found += (color as usize != none_id) as usize;
-            if n_found > 1 { return ColorVecValue::Multiple }
+        match (a,b) {
+            (None, None) => {
+                assert!(range.is_empty());
+                ColorVecValue::None
+            }
+            (None, Some(_)) => panic!("range_bottom2 returned (None, Some)"), // Should never happen
+            (Some(x), None) => {
+                let x = x as usize;
+                if x == none_id { ColorVecValue::None }
+                else if x == multiple_id { ColorVecValue::Multiple }
+                else { ColorVecValue::Single(x) }
+            },
+            (Some(x), Some(y)) => {
+                let x = x as usize;
+                let y = y as usize; // If x or y is none_id, it's this, because none_id is the largest possible
+                if y == none_id && x != multiple_id {
+                    ColorVecValue::Single(x)
+                } else {
+                    ColorVecValue::Multiple
+                }
+            },
         }
-
-        assert!(n_found < 2);
-        if n_found == 0 { 
-            ColorVecValue::None 
-        } else { 
-            ColorVecValue::Single(*distinct_colors.first().unwrap() as usize) 
-        }
-
     }
 
     fn serialize(&self, out: &mut impl Write) {
