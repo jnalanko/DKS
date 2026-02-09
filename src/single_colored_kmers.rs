@@ -4,17 +4,13 @@ use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::time::{Duration, Instant};
 
 use bitvec::prelude::*;
-use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
-use bitvec_sds::traits::{Pat1, RandomAccessU32};
+use bitvec_sds::traits::RandomAccessU32;
 //use bitvec_sds::wavelet_tree::{SelectSupportBoth, WaveletTree};
 use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
 use sbwt::{ContractLeft, LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
-use serde::{Deserialize, Serialize};
 use crate::color_storage::SimpleColorStorage;
 use crate::traits::*;
-
-use crate::wavelet_tree::WaveletTreeWrapper;
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
 const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];

@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RandomAccessU32, RankSupport, SelectSupport}, wavelet_tree::{SelectSupportBoth, WaveletTree}};
+use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RandomAccessU32}, wavelet_tree::{SelectSupportBoth, WaveletTree}};
 
 use crate::single_colored_kmers::LcsWrapper;
 use crate::traits::*;
