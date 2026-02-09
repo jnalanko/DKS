@@ -2,7 +2,8 @@ use std::{ops::Range, path::Path};
 
 use jseqio::reader::DynamicFastXReader;
 
-use crate::single_colored_kmers::{SimpleColorStorage, SingleColoredKmers};
+use crate::color_storage::SimpleColorStorage;
+use crate::single_colored_kmers::SingleColoredKmers;
 use crate::traits::*;
 
 fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {

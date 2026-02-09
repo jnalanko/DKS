@@ -8,11 +8,11 @@ use crate::traits::*;
 /// Wrapper for a bitvec_sds Wavelet tree. We need to wrap it so that we can
 /// implement the foreign ContracLeft trait for it.
 #[derive(Debug, Clone)]
-pub struct LcsWaveletTree {
+pub struct WaveletTreeWrapper {
     inner: bitvec_sds::wavelet_tree::WaveletTree<RankSupportV<Pat1>, SelectSupportBoth>
 }
 
-impl LcsWaveletTree {
+impl WaveletTreeWrapper {
     pub fn new(elements: impl RandomAccessU32, n_values_supported: usize) -> Self {
         let inner = bitvec_sds::wavelet_tree::WaveletTree::<RankSupportV::<Pat1>, SelectSupportBoth>::new(&elements, 0, n_values_supported as u32,
             RankSupportV::new,
@@ -70,7 +70,7 @@ impl LcsWaveletTree {
     }
 }
 
-impl sbwt::ContractLeft for LcsWaveletTree {
+impl sbwt::ContractLeft for WaveletTreeWrapper {
     fn contract_left(&self, I: std::ops::Range<usize>, target_len: usize) -> std::ops::Range<usize> {
 
         let new_start = match self.inner.prev_smaller(I.start + 1, target_len as u32) {
@@ -88,7 +88,7 @@ impl sbwt::ContractLeft for LcsWaveletTree {
     }
 }
 
-impl MySerialize for LcsWaveletTree {
+impl MySerialize for WaveletTreeWrapper {
     fn serialize(&self, out: &mut impl std::io::Write) {
         self.inner.serialize(out); 
     }
@@ -99,7 +99,7 @@ impl MySerialize for LcsWaveletTree {
     }
 }
 
-impl From<sbwt::LcsArray> for LcsWaveletTree {
+impl From<sbwt::LcsArray> for WaveletTreeWrapper {
     fn from(lcs: sbwt::LcsArray) -> Self {
         let lcs = LcsWrapper{inner: lcs};
 

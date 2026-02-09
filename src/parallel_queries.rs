@@ -1,6 +1,6 @@
 use std::{cmp::{max, Reverse}, collections::HashMap, io::Write, ops::Range};
 use jseqio::seq_db::SeqDB;
-use crate::single_colored_kmers::{SimpleColorStorage, SingleColoredKmers};
+use crate::{color_storage::SimpleColorStorage, single_colored_kmers::SingleColoredKmers};
 use crate::traits::*;
 
 pub trait RunWriter: Send {
@@ -365,7 +365,7 @@ mod tests {
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream};
 
-    use crate::{parallel_queries::{TsvWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers, WTColorStorage}};
+    use crate::{color_storage::WTColorStorage, parallel_queries::{TsvWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers}};
 
     struct SingleSeqStream {
         seq: Vec<u8>,
