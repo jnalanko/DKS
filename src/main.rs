@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::{TsvWriter, BedWriter};
 
-use crate::{single_colored_kmers::{LcsWrapper, SimpleColorStorage, WTColorStorage}, wavelet_tree::LcsWaveletTree};
+use crate::{parallel_queries::RunWriter, single_colored_kmers::{ColorStorage, LcsWrapper, MySerialize, SimpleColorStorage, WTColorStorage}, wavelet_tree::LcsWaveletTree};
 
 mod single_colored_kmers;
 mod io;
@@ -144,6 +144,21 @@ fn load_bed_metadata(query_path: &PathBuf, colors_path: &PathBuf) -> (Vec<String
     (seq_names, color_names)
 }
 
+fn run_queries<L,C, W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index: SingleColoredKmers<L,C>, batch_size: usize, k: usize, writer: W) 
+where
+L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + Send + Sync,
+C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage> + Send + Sync {
+
+    let reader = DynamicFastXReaderWrapper { inner: reader };
+    parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
+}
+
+fn get_bed_writer(colors_path: &PathBuf, query_path: &PathBuf) -> BedWriter<BufWriter<std::io::Stdout>>{
+    let (seq_names, color_names) = load_bed_metadata(&query_path, &colors_path);
+    let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
+    BedWriter::new(stdout, seq_names, color_names)
+}
+
 fn main() {
 
     if std::env::var("RUST_LOG").is_err() {
@@ -244,26 +259,37 @@ fn main() {
                 None => { index.k() }
             };
 
-            if bed {
-                let colors_path = colors.unwrap(); // Safe: clap ensures --colors is present when --bed is set
-                let (seq_names, color_names) = load_bed_metadata(&query_path, &colors_path);
+            let reader = DynamicFastXReader::from_file(&query_path)
+                .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
 
-                log::info!("Running queries from {} ...", query_path.display());
-                let reader = DynamicFastXReader::from_file(&query_path)
-                    .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
-                let reader = DynamicFastXReaderWrapper { inner: reader };
-
-                let writer = BedWriter::new(stdout, seq_names, color_names);
-                parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, k, writer);
-            } else {
-                log::info!("Running queries from {} ...", query_path.display());
-                let reader = DynamicFastXReader::from_file(&query_path)
-                    .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
-                let reader = DynamicFastXReaderWrapper { inner: reader };
-
-                let writer = TsvWriter::new(stdout);
-                parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, k, writer);
-            };
+            let batch_size = 10000;
+            let flexible = k < index.k(); // If query k is shorter than index k, we need a flexible index
+            match (bed, flexible) {
+                (true, true) => {
+                    let writer = get_bed_writer(&colors.unwrap(), &query_path);
+                    log::info!("Transforming to flexible index");
+                    let index = into_flexible_index(index);
+                    log::info!("Running queries from {} ...", query_path.display());
+                    run_queries(n_threads, reader, index, batch_size, k, writer);
+                },
+                (true, false) => {
+                    let writer = get_bed_writer(&colors.unwrap(), &query_path);
+                    log::info!("Running queries from {} ...", query_path.display());
+                    run_queries(n_threads, reader, index, batch_size, k, writer);
+                },
+                (false, true) => {
+                    let writer = TsvWriter::new(stdout);
+                    log::info!("Transforming to flexible index");
+                    let index = into_flexible_index(index);
+                    log::info!("Running queries from {} ...", query_path.display());
+                    run_queries(n_threads, reader, index, batch_size, k, writer);
+                },
+                (false, false) => {
+                    let writer = TsvWriter::new(stdout);
+                    log::info!("Running queries from {} ...", query_path.display());
+                    run_queries(n_threads, reader, index, batch_size, k, writer);
+                },
+            }
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
