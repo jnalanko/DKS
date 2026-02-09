@@ -130,7 +130,7 @@ pub enum Subcommands {
         lcs_path: Option<PathBuf>,
 
         #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", default_value = "false")]
-        flexible: bool,
+        flexible: Option<bool>,
 
     },
 
