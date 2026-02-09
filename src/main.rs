@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::{TsvWriter, BedWriter};
 
-use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::LcsWrapper, traits::{ColorStorage, MySerialize}, wavelet_tree::WaveletTreeWrapper};
+use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::LcsWrapper, wavelet_tree::WaveletTreeWrapper};
 
 mod single_colored_kmers;
 mod io;
@@ -47,7 +47,7 @@ impl ColorIndex {
         }
     }
 
-    fn load(&self, input: &mut impl Read) -> Self {
+    fn load(input: &mut impl Read) -> Self {
         let mut file_id = [0_u8; 8];
         input.read_exact(&mut file_id).unwrap();
         assert_eq!(file_id, DKS_FILE_ID, "Invalid DKS file ID");
@@ -64,6 +64,20 @@ impl ColorIndex {
             _ => {
                 panic!("Unknown index type ID in DKS file: {}", String::from_utf8_lossy(&type_id));
             }
+        }
+    }
+
+    fn k(&self) -> usize {
+        match self {
+            ColorIndex::FixedK(index) => index.k(),
+            ColorIndex::FlexibleK(index) => index.k(),
+        }
+    }
+
+    fn is_flexible(&self) -> bool {
+        match self {
+            ColorIndex::FlexibleK(_) => true,
+            ColorIndex::FixedK(_) => false,
         }
     }
 }
@@ -195,17 +209,20 @@ fn load_bed_metadata(query_path: &PathBuf, colors_path: &PathBuf) -> (Vec<String
     (seq_names, color_names)
 }
 
-fn run_queries<L,C, W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index: SingleColoredKmers<L,C>, batch_size: usize, k: usize, writer: W) 
-where
-L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + Send + Sync,
-C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage> + Send + Sync {
-
+fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index: ColorIndex, batch_size: usize, k: usize, writer: W) {
     let reader = DynamicFastXReaderWrapper { inner: reader };
-    parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
+    match index {
+        ColorIndex::FixedK(index) => {
+            parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
+        },
+        ColorIndex::FlexibleK(index) => {
+            parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
+        }
+    }
 }
 
 fn get_bed_writer(colors_path: &PathBuf, query_path: &PathBuf) -> BedWriter<BufWriter<std::io::Stdout>>{
-    let (seq_names, color_names) = load_bed_metadata(&query_path, &colors_path);
+    let (seq_names, color_names) = load_bed_metadata(query_path, colors_path);
     let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
     BedWriter::new(stdout, seq_names, color_names)
 }
@@ -284,15 +301,17 @@ fn main() {
             log::info!("Marking colors");
             let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, n_threads);
 
-            if flexible {
-                let index = into_flexible_index(index);
+            let index = if flexible {
+                log::info!("Transforming index to support flexible queries");
+                ColorIndex::FlexibleK(into_flexible_index(index))
             } else {
-                log::info!("Writing to {}", out_path.display());
-                index.serialize(&mut out);
-                let out_size = std::fs::metadata(out_path).unwrap().len() as f64;
-                log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
+                ColorIndex::FixedK(index)
+            };
 
-            }
+            log::info!("Writing to {}", out_path.display());
+            index.serialize(&mut out);
+            let out_size = std::fs::metadata(out_path).unwrap().len() as f64;
+            log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
 
         },
 
@@ -302,50 +321,30 @@ fn main() {
                 .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
 
             let index_loading_start = std::time::Instant::now();
-            let index = FixedKColorIndex::load(&mut index_input);
+            let index = ColorIndex::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
 
             // 128kb = 2^17 byte buffer
             let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
 
-            let k = match k { // Unwrap the k Option
-                Some(k) => {
-                    assert!(k <= index.k());
-                    k
-                },
-                None => { index.k() }
-            };
+            let k = k.unwrap_or(index.k());
+            if k > index.k() {
+                panic!("Error: query k = {} larger than indexing k = {}", k, index.k());
+            } else if k == index.k() && index.is_flexible() {
+                log::warn!("Running with query k equal to indexing k. For faster queries, build a fixed-k index instead (no --flexible at indexing)"); 
+            }
 
             let reader = DynamicFastXReader::from_file(&query_path)
                 .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
 
             let batch_size = 10000;
-            let flexible = k < index.k(); // If query k is shorter than index k, we need a flexible index
-            match (bed, flexible) {
-                (true, true) => {
-                    let writer = get_bed_writer(&colors.unwrap(), &query_path);
-                    log::info!("Transforming to flexible index");
-                    let index = into_flexible_index(index);
-                    log::info!("Running queries from {} ...", query_path.display());
-                    run_queries(n_threads, reader, index, batch_size, k, writer);
-                },
-                (true, false) => {
-                    let writer = get_bed_writer(&colors.unwrap(), &query_path);
-                    log::info!("Running queries from {} ...", query_path.display());
-                    run_queries(n_threads, reader, index, batch_size, k, writer);
-                },
-                (false, true) => {
-                    let writer = TsvWriter::new(stdout);
-                    log::info!("Transforming to flexible index");
-                    let index = into_flexible_index(index);
-                    log::info!("Running queries from {} ...", query_path.display());
-                    run_queries(n_threads, reader, index, batch_size, k, writer);
-                },
-                (false, false) => {
-                    let writer = TsvWriter::new(stdout);
-                    log::info!("Running queries from {} ...", query_path.display());
-                    run_queries(n_threads, reader, index, batch_size, k, writer);
-                },
+            log::info!("Running queries from {} ...", query_path.display());
+            if bed {
+                let writer = get_bed_writer(&colors.unwrap(), &query_path);
+                run_queries(n_threads, reader, index, batch_size, k, writer);
+            } else {
+                let writer = TsvWriter::new(stdout);
+                run_queries(n_threads, reader, index, batch_size, k, writer);
             }
         },
 
@@ -355,10 +354,18 @@ fn main() {
                 .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
 
             let index_loading_start = std::time::Instant::now();
-            let index = FixedKColorIndex::load(&mut index_input);
+            let index = ColorIndex::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             log::info!("Running query debug implementation for {} ...", query_path.display());
-            single_threaded_queries::lookup_single_threaded(&query_path, &index, index.k());
+
+            match index {
+                ColorIndex::FixedK(index) => {
+                    single_threaded_queries::lookup_single_threaded(&query_path, &index, index.k());
+                },
+                ColorIndex::FlexibleK(index) => {
+                    single_threaded_queries::lookup_single_threaded(&query_path, &index, index.k());
+                }
+            }
 
         }
     } 
