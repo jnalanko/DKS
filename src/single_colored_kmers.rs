@@ -6,7 +6,6 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use bitvec::prelude::*;
 use bitvec::{field::BitField, order::Lsb0, vec::BitVec};
-use bitvec_sds::rank_support_v::RankSupportV;
 use bitvec_sds::traits::{Pat1, RandomAccessU32};
 //use bitvec_sds::wavelet_tree::{SelectSupportBoth, WaveletTree};
 use crossbeam::channel::{Receiver, RecvTimeoutError};
@@ -14,7 +13,7 @@ use jseqio::seq_db::SeqDB;
 use sbwt::{ContractLeft, LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use serde::{Deserialize, Serialize};
 
-use crate::wavelet_tree::WaveletTree;
+use crate::wavelet_tree::LcsWaveletTree;
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
 const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
@@ -42,7 +41,20 @@ impl bitvec_sds::traits::RandomAccessU32 for SimpleColorStorage {
     }
 }
 
-impl SimpleColorStorage {
+impl MySerialize for SimpleColorStorage {
+    fn serialize(&self, mut out: &mut impl Write) {
+        bincode::serialize_into(&mut out, &self.bits_per_color).unwrap();
+        bincode::serialize_into(&mut out, &self.colors).unwrap();
+    }
+
+    fn load(mut input: &mut impl Read) -> Box<Self> {
+        let bits_per_color: usize = bincode::deserialize_from(&mut input).unwrap();
+        let colors: BitVec<usize, Lsb0> = bincode::deserialize_from(&mut input).unwrap();
+        Box::new(SimpleColorStorage { colors, bits_per_color })
+    }
+}
+
+impl ColorStorage for SimpleColorStorage {
     fn get_color(&self, colex: usize) -> ColorVecValue {
         let x: usize = self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le();
         if x == (1 << self.bits_per_color) - 1 { // Max value is reserved for None
@@ -53,6 +65,38 @@ impl SimpleColorStorage {
             ColorVecValue::Single(x)
         }
     }
+    
+    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
+        // This is O(|range| in the worst case)
+
+        if range.is_empty() { return ColorVecValue::None }
+
+        let mut existing_color: Option<usize> = None;
+        for colex in range {
+            match self.get_color(colex) {
+                ColorVecValue::Single(c) => {
+                    match existing_color {
+                        Some(e) => {
+                            if c != e {
+                                return ColorVecValue::Multiple;
+                            }    
+                        },
+                        None => existing_color = Some(c),
+                    }
+                },
+                ColorVecValue::Multiple => return ColorVecValue::Multiple,
+                ColorVecValue::None => (),
+            }
+        }
+
+        match existing_color {
+            Some(c) => ColorVecValue::Single(c),
+            None => ColorVecValue::None,
+        }
+    }
+}
+
+impl SimpleColorStorage {
 
     fn set_color(&mut self, colex: usize, color: ColorVecValue) {
         let value = match color {
@@ -82,14 +126,14 @@ impl SimpleColorStorage {
         assert!(self.bits_per_color <= 32);
         let value_range_end = 1 << self.bits_per_color; // Exclusive end of the supported value range
 
-        let wt = crate::wavelet_tree::WaveletTree::new(self, value_range_end);
+        let wt = crate::wavelet_tree::LcsWaveletTree::new(self, value_range_end);
         WTColorStorage { colors: wt }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct WTColorStorage {
-    colors: crate::wavelet_tree::WaveletTree,
+    colors: crate::wavelet_tree::LcsWaveletTree,
 }
 
 impl WTColorStorage {
@@ -166,7 +210,7 @@ impl MySerialize for WTColorStorage {
     }
 
     fn load(input: &mut impl Read) -> Box<Self> {
-        let colors = WaveletTree::load(input);
+        let colors = LcsWaveletTree::load(input);
         Box::new(WTColorStorage { colors })
     }
 }

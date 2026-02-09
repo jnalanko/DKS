@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::{TsvWriter, BedWriter};
 
-use crate::single_colored_kmers::{LcsWrapper, WTColorStorage};
+use crate::{single_colored_kmers::{LcsWrapper, SimpleColorStorage, WTColorStorage}, wavelet_tree::LcsWaveletTree};
 
 mod single_colored_kmers;
 mod io;
@@ -16,6 +16,9 @@ mod parallel_queries;
 mod single_threaded_queries;
 mod util;
 mod wavelet_tree;
+
+type FixedKColorIndex = SingleColoredKmers<LcsWrapper, SimpleColorStorage>;
+type FlexibleKColorIndex = SingleColoredKmers<LcsWaveletTree, WTColorStorage>;
 
 #[derive(Parser)]
 #[command(arg_required_else_help = true)]
@@ -208,7 +211,7 @@ fn main() {
 
             let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps)).collect();
             log::info!("Marking colors");
-            let index = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, individual_streams, n_threads);
+            let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, n_threads);
 
             log::info!("Writing to {}", out_path.display());
             index.serialize(&mut out);
@@ -222,7 +225,7 @@ fn main() {
                 .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
 
             let index_loading_start = std::time::Instant::now();
-            let index = SingleColoredKmers::<LcsWrapper, WTColorStorage>::load(&mut index_input);
+            let index = FixedKColorIndex::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
 
             // 128kb = 2^17 byte buffer
@@ -264,7 +267,7 @@ fn main() {
                 .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
 
             let index_loading_start = std::time::Instant::now();
-            let index = SingleColoredKmers::<LcsWrapper, WTColorStorage>::load(&mut index_input);
+            let index = FixedKColorIndex::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
             log::info!("Running query debug implementation for {} ...", query_path.display());
             single_threaded_queries::lookup_single_threaded(&query_path, &index, index.k());

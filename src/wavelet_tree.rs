@@ -5,11 +5,11 @@ use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RandomAccessU32, R
 /// Wrapper for a bitvec_sds Wavelet tree. We need to wrap it so that we can
 /// implement the foreign ContracLeft trait for it.
 #[derive(Debug, Clone)]
-pub struct WaveletTree {
+pub struct LcsWaveletTree {
     inner: bitvec_sds::wavelet_tree::WaveletTree<RankSupportV<Pat1>, SelectSupportBoth>
 }
 
-impl WaveletTree {
+impl LcsWaveletTree {
     pub fn new(elements: impl RandomAccessU32, n_values_supported: usize) -> Self {
         let inner = bitvec_sds::wavelet_tree::WaveletTree::<RankSupportV::<Pat1>, SelectSupportBoth>::new(&elements, 0, n_values_supported as u32,
             RankSupportV::new,
@@ -66,7 +66,7 @@ impl WaveletTree {
         self.inner.range_bottom2(l, r)
     }
 }
-impl sbwt::ContractLeft for WaveletTree {
+impl sbwt::ContractLeft for LcsWaveletTree {
     fn contract_left(&self, I: std::ops::Range<usize>, target_len: usize) -> std::ops::Range<usize> {
 
         let new_start = match self.inner.prev_smaller(I.start + 1, target_len as u32) {
