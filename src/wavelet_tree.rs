@@ -1,6 +1,8 @@
 use std::ops::Range;
 
-use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RandomAccessU32, RankSupport, SelectSupport}, wavelet_tree::SelectSupportBoth};
+use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RandomAccessU32, RankSupport, SelectSupport}, wavelet_tree::{SelectSupportBoth, WaveletTree}};
+
+use crate::single_colored_kmers::{LcsWrapper, MySerialize};
 
 /// Wrapper for a bitvec_sds Wavelet tree. We need to wrap it so that we can
 /// implement the foreign ContracLeft trait for it.
@@ -66,6 +68,7 @@ impl LcsWaveletTree {
         self.inner.range_bottom2(l, r)
     }
 }
+
 impl sbwt::ContractLeft for LcsWaveletTree {
     fn contract_left(&self, I: std::ops::Range<usize>, target_len: usize) -> std::ops::Range<usize> {
 
@@ -84,4 +87,26 @@ impl sbwt::ContractLeft for LcsWaveletTree {
     }
 }
 
+impl MySerialize for LcsWaveletTree {
+    fn serialize(&self, out: &mut impl std::io::Write) {
+        self.inner.serialize(out); 
+    }
 
+    fn load(input: &mut impl std::io::Read) -> Box<Self> {
+        let wt = WaveletTree::load(input);
+        Box::new(Self {inner : wt}) 
+    }
+}
+
+impl From<sbwt::LcsArray> for LcsWaveletTree {
+    fn from(lcs: sbwt::LcsArray) -> Self {
+        let lcs = LcsWrapper{inner: lcs};
+
+        // TODO: this maximum could be passed in somehow. Maybe include it in the LcsWrapper
+        // and build from LcsWrapper instead
+        let max_val = (0..lcs.len()).map(|i| lcs.inner.access(i)).max().unwrap() as u32; 
+        let inner = bitvec_sds::wavelet_tree::WaveletTree::<RankSupportV::<Pat1>, SelectSupportBoth>::new
+            (lcs, 0, max_val+1, RankSupportV::new, SelectSupportBoth::new);
+        Self { inner }
+    }
+}

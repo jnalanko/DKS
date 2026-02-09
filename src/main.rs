@@ -20,9 +20,10 @@ mod wavelet_tree;
 type FixedKColorIndex = SingleColoredKmers<LcsWrapper, SimpleColorStorage>;
 type FlexibleKColorIndex = SingleColoredKmers<LcsWaveletTree, SimpleColorStorage>;
 
-/*fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
-
-}*/
+fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
+    let (sbwt, lcs, coloring, _n_colors) = fixed_index.into_parts();
+    FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring)
+}
 
 #[derive(Parser)]
 #[command(arg_required_else_help = true)]

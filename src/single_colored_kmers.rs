@@ -690,7 +690,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + C
 // Wrapper so that we can implement the foreing trait RandomAccessU32
 #[derive(Debug, Clone)]
 pub struct LcsWrapper {
-    inner: LcsArray
+    pub inner: LcsArray
 }
 
 impl ContractLeft for LcsWrapper {
