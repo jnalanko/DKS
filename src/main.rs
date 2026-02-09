@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::{TsvWriter, BedWriter};
 
-use crate::{parallel_queries::RunWriter, single_colored_kmers::{ColorStorage, LcsWrapper, MySerialize, SimpleColorStorage, WTColorStorage}, wavelet_tree::LcsWaveletTree};
+use crate::{parallel_queries::RunWriter, single_colored_kmers::{LcsWrapper, SimpleColorStorage, WTColorStorage}, traits::{ColorStorage, MySerialize}, wavelet_tree::LcsWaveletTree};
 
 mod single_colored_kmers;
 mod io;
@@ -16,6 +16,7 @@ mod parallel_queries;
 mod single_threaded_queries;
 mod util;
 mod wavelet_tree;
+mod traits;
 
 type FixedKColorIndex = SingleColoredKmers<LcsWrapper, SimpleColorStorage>;
 type FlexibleKColorIndex = SingleColoredKmers<LcsWaveletTree, SimpleColorStorage>;

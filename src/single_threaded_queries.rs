@@ -2,7 +2,8 @@ use std::{ops::Range, path::Path};
 
 use jseqio::reader::DynamicFastXReader;
 
-use crate::single_colored_kmers::{ColorStorage, ColorVecValue, MySerialize, SimpleColorStorage, SingleColoredKmers};
+use crate::single_colored_kmers::{SimpleColorStorage, SingleColoredKmers};
+use crate::traits::*;
 
 fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {
     // This code is almost duplicated in parallel_queries.rs

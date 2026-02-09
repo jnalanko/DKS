@@ -1,6 +1,7 @@
 use std::{cmp::{max, Reverse}, collections::HashMap, io::Write, ops::Range};
 use jseqio::seq_db::SeqDB;
-use crate::single_colored_kmers::{ColorStorage, ColorVecValue, MySerialize, SimpleColorStorage, SingleColoredKmers};
+use crate::single_colored_kmers::{SimpleColorStorage, SingleColoredKmers};
+use crate::traits::*;
 
 pub trait RunWriter: Send {
     fn write_header(&mut self);

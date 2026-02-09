@@ -2,7 +2,8 @@ use std::ops::Range;
 
 use bitvec_sds::{rank_support_v::RankSupportV, traits::{Pat1, RandomAccessU32, RankSupport, SelectSupport}, wavelet_tree::{SelectSupportBoth, WaveletTree}};
 
-use crate::single_colored_kmers::{LcsWrapper, MySerialize};
+use crate::single_colored_kmers::LcsWrapper;
+use crate::traits::*;
 
 /// Wrapper for a bitvec_sds Wavelet tree. We need to wrap it so that we can
 /// implement the foreign ContracLeft trait for it.
