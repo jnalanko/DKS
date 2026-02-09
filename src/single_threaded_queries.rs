@@ -2,7 +2,7 @@ use std::{ops::Range, path::Path};
 
 use jseqio::reader::DynamicFastXReader;
 
-use crate::single_colored_kmers::{ColorVecValue, SingleColoredKmers};
+use crate::single_colored_kmers::{ColorStorage, ColorVecValue, MySerialize, SimpleColorStorage, SingleColoredKmers};
 
 fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {
     // This code is almost duplicated in parallel_queries.rs
@@ -15,7 +15,10 @@ fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {
     }
 }
 
-pub fn lookup_single_threaded(query_path: &Path, index: &SingleColoredKmers, k: usize){
+pub fn lookup_single_threaded<L,C>(query_path: &Path, index: &SingleColoredKmers<L,C>, k: usize)
+where L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray>,
+      C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>
+{
 
     let mut reader = DynamicFastXReader::from_file(&query_path)
         .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));

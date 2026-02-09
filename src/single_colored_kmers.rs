@@ -11,7 +11,7 @@ use bitvec_sds::traits::{Pat1, RandomAccessU32};
 //use bitvec_sds::wavelet_tree::{SelectSupportBoth, WaveletTree};
 use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
-use sbwt::{LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
+use sbwt::{ContractLeft, LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use serde::{Deserialize, Serialize};
 
 use crate::wavelet_tree::WaveletTree;
@@ -138,32 +138,72 @@ impl WTColorStorage {
         }
     }
 
+}
+
+pub trait ColorStorage {
+    fn get_color(&self, colex: usize) -> ColorVecValue;
+    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue;
+}
+
+pub trait MySerialize {
+    fn serialize(&self, out: &mut impl Write);
+    fn load(input: &mut impl Read) -> Box<Self>;
+}
+
+impl ColorStorage for WTColorStorage {
+    fn get_color(&self, colex: usize) -> ColorVecValue {
+        self.get_color(colex)
+    }
+
+    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
+        self.get_color_of_range(range)
+    }
+}
+
+impl MySerialize for WTColorStorage {
     fn serialize(&self, out: &mut impl Write) {
         self.colors.serialize(out);
     }
 
-    fn load(input: &mut impl Read) -> Self {
+    fn load(input: &mut impl Read) -> Box<Self> {
         let colors = WaveletTree::load(input);
-        WTColorStorage { colors }
+        Box::new(WTColorStorage { colors })
+    }
+}
+
+impl MySerialize for LcsWrapper {
+    fn serialize(&self, out: &mut impl Write) {
+        self.inner.serialize(out);
+    }
+
+    fn load(input: &mut impl Read) -> Box<Self> {
+        let inner = LcsArray::load(input).unwrap();
+        Box::new(LcsWrapper { inner })
+    }
+}
+
+impl From<SimpleColorStorage> for WTColorStorage {
+    fn from(s: SimpleColorStorage) -> Self {
+        s.into_wavelet_tree_storage() 
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SingleColoredKmers {
+pub struct SingleColoredKmers<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
-    lcs: WaveletTree,
-    colors: WTColorStorage,
+    lcs: L,
+    colors: C,
     n_colors: usize,
 }
 
-pub struct KmerLookupIterator<'a, 'b> {
+pub struct KmerLookupIterator<'a, 'b, L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
     // This iterator should be initialized so that the first k-1 MS values are skipped
-    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, WaveletTree>,
-    index: &'a SingleColoredKmers,
+    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, L>,
+    index: &'a SingleColoredKmers<L, C>,
     length_bound: usize,
 }
 
-impl Iterator for KmerLookupIterator<'_, '_> {
+impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> Iterator for KmerLookupIterator<'_, '_, L, C> {
     type Item = ColorVecValue; // Color id of k-mer
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -348,7 +388,7 @@ impl ColoringBatch {
     }
 }
 
-impl SingleColoredKmers {
+impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmers<L, C> {
 
     pub fn k(&self) -> usize {
         self.sbwt.k()
@@ -375,7 +415,7 @@ impl SingleColoredKmers {
         bincode::serialize_into(&mut out, &self.n_colors).unwrap();
     }
 
-    pub fn load(mut input: &mut impl Read) -> SingleColoredKmers {
+    pub fn load(mut input: &mut impl Read) -> SingleColoredKmers<L, C> {
 
         let mut magic = [0_u8; 4];
         input.read_exact(&mut magic).unwrap();
@@ -391,9 +431,9 @@ impl SingleColoredKmers {
         }
 
         let sbwt = SbwtIndex::<sbwt::SubsetMatrix>::load(input).unwrap();
-        let lcs = WaveletTree::load(input);
+        let lcs = *L::load(input);
 
-        let colors = WTColorStorage::load(&mut input);
+        let colors = *C::load(&mut input);
         let n_colors = bincode::deserialize_from(&mut input).unwrap();
 
         SingleColoredKmers{sbwt, lcs, colors, n_colors}
@@ -412,7 +452,7 @@ impl SingleColoredKmers {
     // Returns an iterator giving the color of each of the n-k+1 k-mers of the query.
     // k must be less or equal to the k in the SBWT index.
     // If query is shorter than k, returns an empty.
-    pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8], k: usize) -> KmerLookupIterator<'a, 'b>{
+    pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8], k: usize) -> KmerLookupIterator<'a, 'b, L, C>{
         assert!(k <= self.sbwt.k());
         let si = StreamingIndex {
             extend_right: &self.sbwt, 
@@ -473,7 +513,7 @@ impl SingleColoredKmers {
             let _progress_printer = scope.spawn({
                 let n_bases_processed = &n_bases_processed;
                 move || {
-                    SingleColoredKmers::progress_print_thread(n_bases_processed, quit_print_recv);
+                    SingleColoredKmers::<L,C>::progress_print_thread(n_bases_processed, quit_print_recv);
                 }
             });
 
@@ -566,33 +606,45 @@ impl SingleColoredKmers {
 
         log::info!("Marking colors");
         let color_storage = if required_bit_width <= 8 {
-            SingleColoredKmers::mark_colors::<T, Vec::<AtomicU8>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU8>>(&sbwt, &lcs, input_streams, n_threads)
         } else if required_bit_width <= 16 {
-            SingleColoredKmers::mark_colors::<T, Vec::<AtomicU16>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU16>>(&sbwt, &lcs, input_streams, n_threads)
         } else if required_bit_width <= 32 {
-            SingleColoredKmers::mark_colors::<T, Vec::<AtomicU32>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU32>>(&sbwt, &lcs, input_streams, n_threads)
         } else {
-            SingleColoredKmers::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads)
         };
 
-        let lcs = LcsWrapper{inner: lcs};
-
-        log::info!("Building LCS wavelet tree");
-        let lcs_wt = WaveletTree::new(lcs, sbwt.k());
+        log::info!("Indexing LCS array");
+        let lcs_index = L::from(lcs);
+        //let lcs_wt = WaveletTree::new(lcs, sbwt.k());
 
         log::info!("Building Color id wavelet tree");
-        let colors_wt = color_storage.into_wavelet_tree_storage();
+        let colors_index = C::from(color_storage);
 
         log::info!("Color structure construction complete");
-        SingleColoredKmers{
-            sbwt, lcs: lcs_wt, n_colors, colors: colors_wt,
+        SingleColoredKmers::<L, C> {
+            sbwt, lcs: lcs_index, n_colors, colors: colors_index,
         }
     }
 }
 
 // Wrapper so that we can implement the foreing trait RandomAccessU32
-struct LcsWrapper {
+#[derive(Debug, Clone)]
+pub struct LcsWrapper {
     inner: LcsArray
+}
+
+impl ContractLeft for LcsWrapper {
+    fn contract_left(&self, I: std::ops::Range<usize>, target_len: usize) -> std::ops::Range<usize> {
+        self.inner.contract_left(I, target_len)
+    }
+}
+
+impl From<LcsArray> for LcsWrapper {
+    fn from(lcs: LcsArray) -> Self {
+        Self {inner: lcs}
+    }
 }
 
 impl RandomAccessU32 for LcsWrapper {

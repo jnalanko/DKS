@@ -1,6 +1,6 @@
 use std::{cmp::{max, Reverse}, collections::HashMap, io::Write, ops::Range};
 use jseqio::seq_db::SeqDB;
-use crate::single_colored_kmers::{ColorVecValue, SingleColoredKmers};
+use crate::single_colored_kmers::{ColorStorage, ColorVecValue, MySerialize, SimpleColorStorage, SingleColoredKmers};
 
 pub trait RunWriter: Send {
     fn write_header(&mut self);
@@ -132,7 +132,9 @@ impl QueryBatch {
         self.chars_in_batch
     }
 
-    fn run(self, index: &SingleColoredKmers) -> ProcessedQueryBatch {
+    fn run<L, C>(self, index: &SingleColoredKmers<L,C>) -> ProcessedQueryBatch where 
+    L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray>,
+    C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage> {
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
             acc + kmers_in_n(self.k, rec.seq.len()) 
         );
@@ -277,7 +279,10 @@ fn output_thread(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch
 }
 
 // Batch size is in nucleotides (= bytes)
-pub fn lookup_parallel(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers, batch_size: usize, k: usize, mut writer: impl RunWriter) {
+pub fn lookup_parallel<L,C>(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers<L,C>, batch_size: usize, k: usize, mut writer: impl RunWriter) where 
+L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + Send + Sync,
+C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage> + Send + Sync
+{
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
@@ -359,7 +364,7 @@ mod tests {
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream};
 
-    use crate::{parallel_queries::{lookup_parallel, TsvWriter}, single_colored_kmers::SingleColoredKmers};
+    use crate::{parallel_queries::{TsvWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers, WTColorStorage}};
 
     struct SingleSeqStream {
         seq: Vec<u8>,
@@ -467,7 +472,7 @@ mod tests {
 
         let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
         eprintln!("Building SingleColoredKmers...");
-        let sck = SingleColoredKmers::new(sbwt, lcs, seqstreams, 3);
+        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, 3);
         eprintln!("SingleColoredKmers built");
 
         // Generate 1000 random queries of lengths between 1 and 100
