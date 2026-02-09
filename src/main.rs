@@ -56,10 +56,14 @@ impl ColorIndex {
         input.read_exact(&mut type_id).unwrap();
         match type_id {
             FIXED_INDEX_TYPE_ID => {
-                ColorIndex::FixedK(FixedKColorIndex::load(input))
+                let index = ColorIndex::FixedK(FixedKColorIndex::load(input));
+                log::info!("Loaded fixed-k index with k = {}", index.k());
+                index
             },
             FLEXIBLE_INDEX_TYPE_ID => {
-                ColorIndex::FlexibleK(FlexibleKColorIndex::load(input))
+                let index = ColorIndex::FlexibleK(FlexibleKColorIndex::load(input));
+                log::info!("Loaded flexible-k index with k = {}", index.k());
+                index
             },
             _ => {
                 panic!("Unknown index type ID in DKS file: {}", String::from_utf8_lossy(&type_id));
