@@ -93,6 +93,40 @@ impl sbwt::SeqStream for DynamicFastXReaderWrapper{
     }
 }
 
+fn load_bed_metadata(query_path: &PathBuf, colors_path: &PathBuf) -> (Vec<String>, HashMap<usize, String>) {
+    // First pass: collect sequence names from query FASTA/FASTQ
+    let mut name_reader = DynamicFastXReader::from_file(query_path).unwrap();
+    let mut seq_names = Vec::new();
+    while let Some(rec) = name_reader.read_next().unwrap() {
+        let header = std::str::from_utf8(rec.head).unwrap();
+        // Take the first whitespace-delimited token as the sequence name
+        let name = header.split_whitespace().next().unwrap_or(header);
+        seq_names.push(name.to_string());
+    }
+    log::info!("Collected {} sequence names from query file", seq_names.len());
+
+    // Parse colors file (tab-separated: color_rank\tcolor_name)
+    let mut color_names = HashMap::new();
+    let colors_file = BufReader::new(File::open(colors_path).unwrap());
+    for line in colors_file.lines() {
+        let line = line.unwrap();
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        let mut fields = line.split('\t');
+        let rank: usize = fields.next()
+            .unwrap_or_else(|| panic!("Missing color_rank in colors file"))
+            .parse()
+            .unwrap_or_else(|e| panic!("Invalid color_rank in colors file: {e}"));
+        let name = fields.next()
+            .unwrap_or_else(|| panic!("Missing color_name in colors file"))
+            .to_string();
+        color_names.insert(rank, name);
+    }
+    log::info!("Loaded {} color names from {}", color_names.len(), colors_path.display());
+
+    (seq_names, color_names)
+}
+
 fn main() {
 
     if std::env::var("RUST_LOG").is_err() {
@@ -185,36 +219,7 @@ fn main() {
 
             if bed {
                 let colors_path = colors.unwrap(); // Safe: clap ensures --colors is present when --bed is set
-
-                // First pass: collect sequence names from query FASTA/FASTQ
-                let mut name_reader = DynamicFastXReader::from_file(&query_path).unwrap();
-                let mut seq_names = Vec::new();
-                while let Some(rec) = name_reader.read_next().unwrap() {
-                    let header = std::str::from_utf8(rec.head).unwrap();
-                    // Take the first whitespace-delimited token as the sequence name
-                    let name = header.split_whitespace().next().unwrap_or(header);
-                    seq_names.push(name.to_string());
-                }
-                log::info!("Collected {} sequence names from query file", seq_names.len());
-
-                // Parse colors file (tab-separated: color_rank\tcolor_name)
-                let mut color_names = HashMap::new();
-                let colors_file = BufReader::new(File::open(&colors_path).unwrap());
-                for line in colors_file.lines() {
-                    let line = line.unwrap();
-                    let line = line.trim();
-                    if line.is_empty() { continue; }
-                    let mut fields = line.split('\t');
-                    let rank: usize = fields.next()
-                        .unwrap_or_else(|| panic!("Missing color_rank in colors file"))
-                        .parse()
-                        .unwrap_or_else(|e| panic!("Invalid color_rank in colors file: {e}"));
-                    let name = fields.next()
-                        .unwrap_or_else(|| panic!("Missing color_name in colors file"))
-                        .to_string();
-                    color_names.insert(rank, name);
-                }
-                log::info!("Loaded {} color names from {}", color_names.len(), colors_path.display());
+                let (seq_names, color_names) = load_bed_metadata(&query_path, &colors_path);
 
                 let writer = BedWriter::new(stdout, seq_names, color_names);
                 parallel_queries::lookup_parallel(n_threads, reader, &index, 10000, writer);
