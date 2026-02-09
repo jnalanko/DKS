@@ -129,8 +129,8 @@ pub enum Subcommands {
         #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file.", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
 
-        #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", default_value = "false")]
-        flexible: Option<bool>,
+        #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", long = "flexible", default_value = "false")]
+        flexible: bool,
 
     },
 
