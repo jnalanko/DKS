@@ -1,6 +1,6 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{collections::HashMap, fs::File, io::{BufRead, BufReader, BufWriter}, path::PathBuf};
+use std::{collections::HashMap, fs::File, io::{BufRead, BufReader, BufWriter, Read, Write}, path::PathBuf};
 use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
 use jseqio::reader::DynamicFastXReader;
@@ -21,6 +21,52 @@ mod color_storage;
 
 type FixedKColorIndex = SingleColoredKmers<LcsWrapper, SimpleColorStorage>;
 type FlexibleKColorIndex = SingleColoredKmers<WaveletTreeWrapper, SimpleColorStorage>;
+
+enum ColorIndex {
+    FixedK(FixedKColorIndex),
+    FlexibleK(FlexibleKColorIndex),
+}
+
+const DKS_FILE_ID: [u8; 8] = *b"dks0.1.2";
+const FIXED_INDEX_TYPE_ID: [u8; 4] = *b"fixd";
+const FLEXIBLE_INDEX_TYPE_ID: [u8; 4] = *b"flex";
+
+impl ColorIndex {
+    fn serialize(&self, out: &mut impl Write) {
+        match self {
+            ColorIndex::FixedK(index) => {
+                out.write_all(&DKS_FILE_ID).unwrap();
+                out.write_all(&FIXED_INDEX_TYPE_ID).unwrap();
+                index.serialize(out);
+            },
+            ColorIndex::FlexibleK(index) => {
+                out.write_all(&DKS_FILE_ID).unwrap();
+                out.write_all(&FLEXIBLE_INDEX_TYPE_ID).unwrap();
+                index.serialize(out);
+            }
+        }
+    }
+
+    fn load(&self, input: &mut impl Read) -> Self {
+        let mut file_id = [0_u8; 8];
+        input.read_exact(&mut file_id).unwrap();
+        assert_eq!(file_id, DKS_FILE_ID, "Invalid DKS file ID");
+
+        let mut type_id = [0_u8; 4];
+        input.read_exact(&mut type_id).unwrap();
+        match type_id {
+            FIXED_INDEX_TYPE_ID => {
+                ColorIndex::FixedK(FixedKColorIndex::load(input))
+            },
+            FLEXIBLE_INDEX_TYPE_ID => {
+                ColorIndex::FlexibleK(FlexibleKColorIndex::load(input))
+            },
+            _ => {
+                panic!("Unknown index type ID in DKS file: {}", String::from_utf8_lossy(&type_id));
+            }
+        }
+    }
+}
 
 fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
     let (sbwt, lcs, coloring, _n_colors) = fixed_index.into_parts();
@@ -64,6 +110,9 @@ pub enum Subcommands {
 
         #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file.", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
+
+        #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", default_value = "false")]
+        flexible: bool,
 
     },
 
@@ -173,7 +222,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path} => {
+        Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(&input_fof)
                 .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", input_fof.display())))
                 .lines().map(|f| PathBuf::from(f.unwrap())).collect();
@@ -235,10 +284,16 @@ fn main() {
             log::info!("Marking colors");
             let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, n_threads);
 
-            log::info!("Writing to {}", out_path.display());
-            index.serialize(&mut out);
-            let out_size = std::fs::metadata(out_path).unwrap().len() as f64;
-            log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
+            if flexible {
+                let index = into_flexible_index(index);
+            } else {
+                log::info!("Writing to {}", out_path.display());
+                index.serialize(&mut out);
+                let out_size = std::fs::metadata(out_path).unwrap().len() as f64;
+                log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
+
+            }
+
         },
 
         Subcommands::Lookup{query: query_path, index: index_path, n_threads, k, bed, colors} => {
