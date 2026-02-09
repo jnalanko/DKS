@@ -18,7 +18,7 @@ const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,
 
 impl MySerialize for LcsWrapper {
     fn serialize(&self, out: &mut impl Write) {
-        self.inner.serialize(out);
+        self.inner.serialize(out).unwrap();
     }
 
     fn load(input: &mut impl Read) -> Box<Self> {
