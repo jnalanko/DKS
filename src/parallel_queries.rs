@@ -133,16 +133,14 @@ impl QueryBatch {
         self.chars_in_batch
     }
 
-    fn run<L, C>(self, index: &SingleColoredKmers<L,C>) -> ProcessedQueryBatch where 
-    L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray>,
-    C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage> {
+    fn run<A: ColoredKmerLookupAlgorithm>(self, kmer_lookup_algo: &A) -> ProcessedQueryBatch {
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
             acc + kmers_in_n(self.k, rec.seq.len()) 
         );
         let mut color_ids = Vec::<ColorVecValue>::with_capacity(total_query_kmers);
 
         for rec in self.seqs.iter() {
-            for color in index.lookup_kmers(rec.seq, self.k) {
+            for color in kmer_lookup_algo.lookup_kmers(rec.seq, self.k) {
                 color_ids.push(color);
             }
         }
@@ -280,10 +278,7 @@ fn output_thread(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch
 }
 
 // Batch size is in nucleotides (= bytes)
-pub fn lookup_parallel<L,C>(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, index: &SingleColoredKmers<L,C>, batch_size: usize, k: usize, mut writer: impl RunWriter) where 
-L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + Send + Sync,
-C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage> + Send + Sync
-{
+pub fn lookup_parallel<A: ColoredKmerLookupAlgorithm + Send + Sync>(n_threads: usize, mut queries: impl sbwt::SeqStream + Send, kmer_lookup_algo: &A, batch_size: usize, k: usize, mut writer: impl RunWriter) {
     let (batch_send, batch_recv) = crossbeam::channel::bounded::<QueryBatch>(2); // Read the next batch while the latest one is waiting to be processed
     let (output_send, output_recv) = crossbeam::channel::bounded::<ProcessedQueryBatch>(2);
 
@@ -333,10 +328,9 @@ C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage> + Send + Sync
         for _ in 0..n_threads {
             let output_send_clone = output_send.clone(); // Moved into worker
             let batch_recv_clone = batch_recv.clone(); // Moved into worker
-            let index_ref = &index; // Moved into worker
             worker_handles.push(s.spawn(move || {
                 while let Ok(batch) = batch_recv_clone.recv() {
-                   let processed_batch = batch.run(index_ref);
+                   let processed_batch = batch.run(kmer_lookup_algo);
                    output_send_clone.send(processed_batch).unwrap();
                 }
             }));

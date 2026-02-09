@@ -23,6 +23,12 @@ pub struct SingleColoredKmers<L: ContractLeft + Clone + MySerialize + From<LcsAr
     n_colors: usize,
 }
 
+impl<L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray>, C: ColorStorage + Clone + MySerialize+ From<SimpleColorStorage>> ColoredKmerLookupAlgorithm for SingleColoredKmers<L, C> {
+    fn lookup_kmers(&self, query: &[u8], k: usize) -> impl Iterator<Item = ColorVecValue> {
+        self.lookup_kmers(query, k)
+    }
+}
+
 pub struct KmerLookupIterator<'a, 'b, L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
     // This iterator should be initialized so that the first k-1 MS values are skipped
     matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, L>,
