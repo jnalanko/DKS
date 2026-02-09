@@ -29,6 +29,7 @@ pub enum ColorVecValue {
 pub struct SimpleColorStorage {
     colors: BitVec::<usize, Lsb0>,
     bits_per_color: usize,
+    n_colors: usize, // Number of single colors, not including the special colors for multiple and none.
 }
 
 impl bitvec_sds::traits::RandomAccessU32 for SimpleColorStorage {
@@ -43,14 +44,16 @@ impl bitvec_sds::traits::RandomAccessU32 for SimpleColorStorage {
 
 impl MySerialize for SimpleColorStorage {
     fn serialize(&self, mut out: &mut impl Write) {
+        bincode::serialize_into(&mut out, &self.n_colors).unwrap();
         bincode::serialize_into(&mut out, &self.bits_per_color).unwrap();
         bincode::serialize_into(&mut out, &self.colors).unwrap();
     }
 
     fn load(mut input: &mut impl Read) -> Box<Self> {
+        let n_colors: usize = bincode::deserialize_from(&mut input).unwrap();
         let bits_per_color: usize = bincode::deserialize_from(&mut input).unwrap();
         let colors: BitVec<usize, Lsb0> = bincode::deserialize_from(&mut input).unwrap();
-        Box::new(SimpleColorStorage { colors, bits_per_color })
+        Box::new(SimpleColorStorage { n_colors, colors, bits_per_color })
     }
 }
 
@@ -113,6 +116,7 @@ impl SimpleColorStorage {
     fn new(len: usize, n_colors: usize) -> Self {
         let bits_per_color = Self::required_bit_width(n_colors);
         SimpleColorStorage {
+            n_colors,
             colors: bitvec![0; len * bits_per_color],
             bits_per_color,
         }
@@ -434,6 +438,10 @@ impl ColoringBatch {
 
 impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmers<L, C> {
 
+    pub fn into_parts(self) -> (SbwtIndex<SubsetMatrix>, L, C, usize) {
+        (self.sbwt, self.lcs, self.colors, self.n_colors)
+    }
+
     pub fn k(&self) -> usize {
         self.sbwt.k()
     }
@@ -659,17 +667,23 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + C
             SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads)
         };
 
+        Self::new_given_coloring(sbwt, lcs, color_storage)
+    }
+
+    pub fn new_given_coloring(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, coloring: SimpleColorStorage) -> Self {
+        let n_colors = coloring.n_colors;
+
         log::info!("Indexing LCS array");
         let lcs_index = L::from(lcs);
-        //let lcs_wt = WaveletTree::new(lcs, sbwt.k());
 
         log::info!("Building Color id wavelet tree");
-        let colors_index = C::from(color_storage);
+        let colors_index = C::from(coloring);
 
         log::info!("Color structure construction complete");
         SingleColoredKmers::<L, C> {
             sbwt, lcs: lcs_index, n_colors, colors: colors_index,
         }
+
     }
 }
 
