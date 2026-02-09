@@ -217,6 +217,9 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     let reader = DynamicFastXReaderWrapper { inner: reader };
     match index {
         ColorIndex::FixedK(index) => {
+            if k < index.k() {
+                log::info!("Querying with k shorter than the k that was used for indexing ({} < {}). This will give the right answers, but might be very slow! Consider indexing with --flexible instead for better performance.", k, index.k());
+            }
             parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
         },
         ColorIndex::FlexibleK(index) => {
