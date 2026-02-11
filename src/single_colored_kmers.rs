@@ -1,5 +1,6 @@
 use std::io::{Read, Write};
 use std::ops::Range;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::time::{Duration, Instant};
 
@@ -23,29 +24,48 @@ pub struct SingleColoredKmers<L: ContractLeft + Clone + MySerialize + From<LcsAr
     n_colors: usize,
 }
 
-impl<L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray>, C: ColorStorage + Clone + MySerialize+ From<SimpleColorStorage>> ColoredKmerLookupAlgorithm for SingleColoredKmers<L, C> {
+impl<L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize+ From<SimpleColorStorage>> ColoredKmerLookupAlgorithm for SingleColoredKmers<L, C> {
     fn lookup_kmers(&self, query: &[u8], k: usize) -> impl Iterator<Item = ColorVecValue> {
         self.lookup_kmers(query, k)
     }
 }
 
-pub struct KmerLookupIterator<'a, 'b, L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
+pub struct KmerLookupIterator<'a, 'b, L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
     // This iterator should be initialized so that the first k-1 MS values are skipped
     matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, L>,
     index: &'a SingleColoredKmers<L, C>,
-    length_bound: usize,
+    query_pattern_length: usize,
 }
 
-impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> Iterator for KmerLookupIterator<'_, '_, L, C> {
+impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> Iterator for KmerLookupIterator<'_, '_, L, C> {
     type Item = ColorVecValue; // Color id of k-mer
 
     fn next(&mut self) -> Option<Self::Item> {
         let (len, range) = self.matching_stats_iter.next()?;
+        let lcs = &self.index.lcs;
 
-        if len == self.length_bound {
+        if len >= self.query_pattern_length {
             // k-mer is found in the sbwt
-            debug_assert!(self.length_bound < self.index.k() || range.len() == 1); // Full k-mer should have a singleton range
-            Some(self.index.get_color(range))
+            assert!(range.len() > 0);
+            let mut color = self.index.get_color_of_range(range.clone());
+            if color == ColorVecValue::Multiple { return Some(color) }
+
+            // Expand the interval as long as it has at most single color and the
+            // LCS is at least the query pattern length.
+            let (mut new_start, mut new_end) = (range.start, range.end);
+            while new_start > 0 && lcs.get_lcs(new_start) >= self.query_pattern_length {
+                new_start -= 1;
+                color = color.union(self.index.get_color(new_start));
+                if color == ColorVecValue::Multiple { return Some(ColorVecValue::Multiple) }
+            }
+            let n = self.index.sbwt.n_sets();
+            while new_end < n && lcs.get_lcs(new_end) >= self.query_pattern_length {
+                color = color.union(self.index.get_color(new_start));
+                if color == ColorVecValue::Multiple { return Some(ColorVecValue::Multiple) }
+                new_end += 1;
+            }
+
+            Some(color)
         } else {
             Some(ColorVecValue::None) // Iterator not finished but the k-mer is not found -> no color
         }
@@ -147,7 +167,7 @@ impl ColoringBatch {
     }
 }
 
-impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmers<L, C> {
+impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmers<L, C> {
 
     pub fn into_parts(self) -> (SbwtIndex<SubsetMatrix>, L, C, usize) {
         (self.sbwt, self.lcs, self.colors, self.n_colors)
@@ -206,8 +226,13 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + C
     pub fn n_colors(&self) -> usize {
         self.n_colors
     }
+
+    pub fn get_color(&self, colex: usize) -> ColorVecValue {
+        assert!(colex <= self.sbwt.n_sets());
+        self.colors.get_color(colex)
+    }
     
-    pub fn get_color(&self, colex_range: Range<usize>) -> ColorVecValue {
+    pub fn get_color_of_range(&self, colex_range: Range<usize>) -> ColorVecValue {
         assert!(colex_range.end <= self.sbwt.n_sets());
         self.colors.get_color_of_range(colex_range)
     }
@@ -224,13 +249,14 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray>, C: ColorStorage + C
             k: self.sbwt.k(), // Can be different than the k given as a parameter to this function!
         };
 
-        let mut ms_iter = si.bounded_matching_statistics_iter(query, k);
+        //let mut ms_iter = si.bounded_matching_statistics_iter(query, k);
+        let mut ms_iter = si.matching_statistics_iter(query);
 
         // Skip over the first k-1 positions
         for _ in 0..k-1 {
             ms_iter.next(); // If the iterator ends early, will keep returning None
         }
-        KmerLookupIterator { matching_stats_iter: ms_iter, index: self, length_bound: k}
+        KmerLookupIterator { matching_stats_iter: ms_iter, index: self, query_pattern_length: k}
 
     }
 
@@ -413,6 +439,12 @@ impl ContractLeft for LcsWrapper {
 impl From<LcsArray> for LcsWrapper {
     fn from(lcs: LcsArray) -> Self {
         Self {inner: lcs}
+    }
+}
+
+impl LcsAccess for LcsWrapper {
+    fn get_lcs(&self, colex: usize) -> usize {
+        self.inner.access(colex)
     }
 }
 

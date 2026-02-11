@@ -88,6 +88,12 @@ impl sbwt::ContractLeft for WaveletTreeWrapper {
     }
 }
 
+impl LcsAccess for WaveletTreeWrapper {
+    fn get_lcs(&self, colex: usize) -> usize {
+        self.inner.access(colex) as usize
+    }
+}
+
 impl MySerialize for WaveletTreeWrapper {
     fn serialize(&self, out: &mut impl std::io::Write) {
         self.inner.serialize(out); 

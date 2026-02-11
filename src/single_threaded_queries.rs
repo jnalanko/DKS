@@ -18,7 +18,7 @@ fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {
 }
 
 pub fn lookup_single_threaded<L,C>(query_path: &Path, index: &SingleColoredKmers<L,C>, k: usize)
-where L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray>,
+where L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + LcsAccess,
       C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>
 {
 

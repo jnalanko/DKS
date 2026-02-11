@@ -11,6 +11,25 @@ pub enum ColorVecValue {
     None,
 } 
 
+impl ColorVecValue {
+    pub fn union(&self, other: ColorVecValue) -> ColorVecValue {
+        match (*self, other) {
+            (ColorVecValue::Single(a), ColorVecValue::Single(b)) => {
+                if a == b { ColorVecValue::Single(a) }
+                else { ColorVecValue::Multiple }    
+            },
+            (ColorVecValue::Single(_), ColorVecValue::Multiple) => ColorVecValue::Multiple,
+            (ColorVecValue::Single(a), ColorVecValue::None) => ColorVecValue::Single(a),
+            (ColorVecValue::Multiple, ColorVecValue::Single(_)) => ColorVecValue::Multiple,
+            (ColorVecValue::Multiple, ColorVecValue::Multiple) => ColorVecValue::Multiple,
+            (ColorVecValue::Multiple, ColorVecValue::None) => ColorVecValue::Multiple,
+            (ColorVecValue::None, ColorVecValue::Single(b)) => ColorVecValue::Single(b),
+            (ColorVecValue::None, ColorVecValue::Multiple) => ColorVecValue::Multiple,
+            (ColorVecValue::None, ColorVecValue::None) => ColorVecValue::None,
+        }
+    }
+}
+
 pub trait ColoredKmerLookupAlgorithm {
     fn lookup_kmers(&self, query: &[u8], k: usize) -> impl Iterator<Item = ColorVecValue>;
 }
@@ -23,6 +42,10 @@ pub trait ColorStorage {
 pub trait MySerialize {
     fn serialize(&self, out: &mut impl Write);
     fn load(input: &mut impl Read) -> Box<Self>;
+}
+
+pub trait LcsAccess {
+    fn get_lcs(&self, colex: usize) -> usize;
 }
 
 pub trait AtomicColorVec{
