@@ -132,6 +132,9 @@ pub enum Subcommands {
         #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", long = "flexible", default_value = "false")]
         flexible: bool,
 
+        #[arg(help = "Optional: a file with one color name per line, in the same order as the input files. Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
+        color_names_file: Option<PathBuf>,
+
     },
 
     #[command(arg_required_else_help = true)]
@@ -246,7 +249,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible} => {
+        Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible, color_names_file} => {
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(&input_fof)
                 .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", input_fof.display())))
                 .lines().map(|f| PathBuf::from(f.unwrap())).collect();
@@ -305,7 +308,17 @@ fn main() {
             };
 
             let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps)).collect();
-            let color_names: Vec<String> = input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect();
+            let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
+                let names: Vec<String> = BufReader::new(File::open(names_path)
+                    .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
+                    .lines().map(|l| l.unwrap()).collect();
+                if names.len() != input_paths.len() {
+                    panic!("Color names file has {} names but there are {} input files", names.len(), input_paths.len());
+                }
+                names
+            } else {
+                input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect()
+            };
             log::info!("Marking colors");
             let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
 
