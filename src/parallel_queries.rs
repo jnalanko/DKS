@@ -20,10 +20,11 @@ pub struct OutputWriter<W: Write> {
     seq_names: Option<Vec<String>>,
     color_names: Option<Vec<String>>,
     report_misses: bool,
+    print_header: bool,
 }
 
 impl<W: Write> OutputWriter<W> {
-    pub fn new(out: W, seq_names: Option<Vec<String>>, color_names: Option<Vec<String>>, report_misses: bool) -> Self {
+    pub fn new(out: W, seq_names: Option<Vec<String>>, color_names: Option<Vec<String>>, report_misses: bool, print_header: bool) -> Self {
         if let Some(names) = &color_names {
             for name in names {
                 if name == "none" {
@@ -34,7 +35,7 @@ impl<W: Write> OutputWriter<W> {
                 }
             }
         }
-        Self { out, seq_names, color_names, report_misses }
+        Self { out, seq_names, color_names, report_misses, print_header }
     }
 
     #[cfg(test)]
@@ -45,8 +46,11 @@ impl<W: Write> OutputWriter<W> {
 
 impl<W: Write + Send> RunWriter for OutputWriter<W> {
     fn write_header(&mut self) {
-        let seq_col = if self.seq_names.is_some() { "query_name" } else { "query_rank" };
-        writeln!(self.out, "{seq_col}\tfrom_kmer\tto_kmer\tcolor").unwrap();
+        if self.print_header {
+            let seq_col = if self.seq_names.is_some() { "query_name" } else { "query_rank" };
+            let color_col = if self.color_names.is_some() { "color_name" } else { "color" };
+            writeln!(self.out, "{seq_col}\tfrom_kmer\tto_kmer\t{color_col}").unwrap();
+        }
     }
 
     fn write_run(&mut self, seq_id: isize, run_color: ColorVecValue, range: Range<usize>) {
@@ -485,7 +489,7 @@ mod tests {
 
         let out_vec = Vec::<u8>::new();
         let out = std::io::Cursor::new(out_vec);
-        let mut writer = OutputWriter::new(out, None, None, false);
+        let mut writer = OutputWriter::new(out, None, None, false, true);
         lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, k, &mut writer);
 
         // Parse output tsv line by line
@@ -495,7 +499,7 @@ mod tests {
         let mut found_kmers: Vec::<Vec::<(usize,Color)>> = vec![Vec::new(); queries.len()]; 
         for (line_idx, line) in output_lines.enumerate() {
             if line_idx == 0 { // tsv header
-                assert_eq!(line, "seq_rank\tfrom_kmer\tto_kmer\tcolor");
+                assert_eq!(line, "query_rank\tfrom_kmer\tto_kmer\tcolor");
             } else {
                 let mut fields = line.split('\t');
                 let seq_id: usize = fields.next().unwrap().parse().unwrap();
