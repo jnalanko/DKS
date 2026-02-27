@@ -56,29 +56,20 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
         let from = range.start;
         let to = range.end - 1;
 
-        let seq_owned;
-        let seq: &str = if let Some(names) = &self.seq_names {
-            &names[seq_id as usize]
-        } else {
-            seq_owned = seq_id.to_string();
-            &seq_owned
-        };
-
-        let color_owned;
-        let color: &str = match run_color {
-            ColorVecValue::Single(c) => {
-                if let Some(names) = &self.color_names {
-                    &names[c]
-                } else {
-                    color_owned = c.to_string();
-                    &color_owned
-                }
+        match &self.seq_names {
+            Some(names) => write!(self.out, "{}", &names[seq_id as usize]).unwrap(),
+            None => write!(self.out, "{seq_id}").unwrap(),
+        }
+        write!(self.out, "\t{from}\t{to}\t").unwrap();
+        match run_color {
+            ColorVecValue::Single(c) => match &self.color_names {
+                Some(names) => write!(self.out, "{}", &names[c]).unwrap(),
+                None => write!(self.out, "{c}").unwrap(),
             },
-            ColorVecValue::Multiple => if self.color_names.is_some() { "multiple" } else { "*" },
-            ColorVecValue::None => if self.color_names.is_some() { "none" } else { "-" },
-        };
-
-        writeln!(self.out, "{seq}\t{from}\t{to}\t{color}").unwrap();
+            ColorVecValue::Multiple => write!(self.out, "{}", if self.color_names.is_some() { "multiple" } else { "*" }).unwrap(),
+            ColorVecValue::None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
+        }
+        writeln!(self.out).unwrap();
     }
 
     fn flush(&mut self) {
