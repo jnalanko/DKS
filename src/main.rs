@@ -87,8 +87,8 @@ impl ColorIndex {
 }
 
 fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
-    let (sbwt, lcs, coloring, _n_colors) = fixed_index.into_parts();
-    FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring)
+    let (sbwt, lcs, coloring, _n_colors, color_names) = fixed_index.into_parts();
+    FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring, color_names)
 }
 
 #[derive(Parser)]
@@ -305,8 +305,9 @@ fn main() {
             };
 
             let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps)).collect();
+            let color_names: Vec<String> = input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect();
             log::info!("Marking colors");
-            let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, n_threads);
+            let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
 
             let index = if flexible {
                 log::info!("Transforming index to support flexible queries");
