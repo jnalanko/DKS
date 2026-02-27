@@ -45,7 +45,7 @@ impl<W: Write> OutputWriter<W> {
 
 impl<W: Write + Send> RunWriter for OutputWriter<W> {
     fn write_header(&mut self) {
-        let seq_col = if self.seq_names.is_some() { "seq_name" } else { "seq_rank" };
+        let seq_col = if self.seq_names.is_some() { "query_name" } else { "query_rank" };
         writeln!(self.out, "{seq_col}\tfrom_kmer\tto_kmer\tcolor").unwrap();
     }
 
