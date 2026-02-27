@@ -15,13 +15,26 @@ impl<T: RunWriter + ?Sized> RunWriter for &mut T {
     fn flush(&mut self) { (**self).flush() }
 }
 
-pub struct TsvWriter<W: Write> {
+pub struct OutputWriter<W: Write> {
     out: W,
+    seq_names: Option<Vec<String>>,
+    color_names: Option<Vec<String>>,
+    report_misses: bool,
 }
 
-impl<W: Write> TsvWriter<W> {
-    pub fn new(out: W) -> Self {
-        Self { out }
+impl<W: Write> OutputWriter<W> {
+    pub fn new(out: W, seq_names: Option<Vec<String>>, color_names: Option<Vec<String>>, report_misses: bool) -> Self {
+        if let Some(names) = &color_names {
+            for name in names {
+                if name == "none" {
+                    eprintln!("Error: can not use \"none\" as a color name because it is a reserved name");
+                }
+                if name == "multiple" {
+                    eprintln!("Error: can not use \"multiple\" as a color name because it is a reserved name");
+                }
+            }
+        }
+        Self { out, seq_names, color_names, report_misses }
     }
 
     #[cfg(test)]
@@ -30,64 +43,42 @@ impl<W: Write> TsvWriter<W> {
     }
 }
 
-impl<W: Write + Send> RunWriter for TsvWriter<W> {
+impl<W: Write + Send> RunWriter for OutputWriter<W> {
     fn write_header(&mut self) {
-        writeln!(self.out, "seq_rank\tfrom_kmer\tto_kmer\tcolor").unwrap();
+        let seq_col = if self.seq_names.is_some() { "seq_name" } else { "seq_rank" };
+        writeln!(self.out, "{seq_col}\tfrom_kmer\tto_kmer\tcolor").unwrap();
     }
 
     fn write_run(&mut self, seq_id: isize, run_color: ColorVecValue, range: Range<usize>) {
-        if !range.is_empty() {
-            match run_color {
-                ColorVecValue::Single(c) => writeln!(self.out, "{seq_id}\t{}\t{}\t{}", range.start, range.end-1, c).unwrap(),
-                ColorVecValue::Multiple => writeln!(self.out, "{seq_id}\t{}\t{}\t*", range.start, range.end-1).unwrap(),
-                ColorVecValue::None => (), // Do not print runs of misses
-            }
-        }
-    }
+        if range.is_empty() { return; }
+        if matches!(run_color, ColorVecValue::None) && !self.report_misses { return; }
 
-    fn flush(&mut self) {
-        self.out.flush().unwrap();
-    }
-}
+        let from = range.start;
+        let to = range.end - 1;
 
-pub struct BedWriter<W: Write> {
-    out: W,
-    seq_names: Vec<String>,
-    color_names: Vec<String>,
-}
+        let seq_owned;
+        let seq: &str = if let Some(names) = &self.seq_names {
+            &names[seq_id as usize]
+        } else {
+            seq_owned = seq_id.to_string();
+            &seq_owned
+        };
 
-impl<W: Write> BedWriter<W> {
-    pub fn new(out: W, seq_names: Vec<String>, color_names: Vec<String>) -> Self {
-        // Check that the special names used in write_run are not used as color names.
-        for name in color_names.iter() {
-            if name == "none" {
-                eprintln!("Error: can not use \"none\" as a color name because it is a reserved name");
-            }
-            if name == "multiple" {
-                eprintln!("Error: can not use \"multiple\" as a color name because it is a reserved name");
-            }
-        }
-        Self { out, seq_names, color_names }
-    }
-}
+        let color_owned;
+        let color: &str = match run_color {
+            ColorVecValue::Single(c) => {
+                if let Some(names) = &self.color_names {
+                    &names[c]
+                } else {
+                    color_owned = c.to_string();
+                    &color_owned
+                }
+            },
+            ColorVecValue::Multiple => if self.color_names.is_some() { "multiple" } else { "*" },
+            ColorVecValue::None => if self.color_names.is_some() { "none" } else { "-" },
+        };
 
-impl<W: Write + Send> RunWriter for BedWriter<W> {
-    fn write_header(&mut self) {
-        // BED format has no header
-    }
-
-    fn write_run(&mut self, seq_id: isize, run_color: ColorVecValue, range: Range<usize>) {
-        if !range.is_empty() {
-            let seq_name = &self.seq_names[seq_id as usize];
-            match run_color {
-                ColorVecValue::Single(c) => {
-                    let color_name = &self.color_names[c];
-                    writeln!(self.out, "{seq_name}\t{}\t{}\t{color_name}", range.start, range.end).unwrap();
-                },
-                ColorVecValue::Multiple => writeln!(self.out, "{seq_name}\t{}\t{}\tmultiple", range.start, range.end).unwrap(),
-                ColorVecValue::None => writeln!(self.out, "{seq_name}\t{}\t{}\tnone", range.start, range.end).unwrap(),
-            }
-        }
+        writeln!(self.out, "{seq}\t{from}\t{to}\t{color}").unwrap();
     }
 
     fn flush(&mut self) {
@@ -367,7 +358,7 @@ mod tests {
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream};
 
-    use crate::{color_storage::WTColorStorage, parallel_queries::{TsvWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers}};
+    use crate::{color_storage::WTColorStorage, parallel_queries::{OutputWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers}};
 
     struct SingleSeqStream {
         seq: Vec<u8>,
@@ -503,7 +494,7 @@ mod tests {
 
         let out_vec = Vec::<u8>::new();
         let out = std::io::Cursor::new(out_vec);
-        let mut writer = TsvWriter::new(out);
+        let mut writer = OutputWriter::new(out, None, None, false);
         lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, k, &mut writer);
 
         // Parse output tsv line by line

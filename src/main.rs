@@ -6,7 +6,7 @@ use io::LazyFileSeqStream;
 use jseqio::reader::DynamicFastXReader;
 use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
-use parallel_queries::{TsvWriter, BedWriter};
+use parallel_queries::OutputWriter;
 
 use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::LcsWrapper, wavelet_tree::WaveletTreeWrapper};
 
@@ -158,8 +158,14 @@ pub enum Subcommands {
         #[arg(help = "Query k-mer length. Must be less or equal to the k used in index construction. If not given, defaults to the same k as during index construction.", short, required = false)]
         k: Option<usize>,
 
-        #[arg(help = "Output in BED format instead of TSV.", long)]
-        bed: bool,
+        #[arg(help = "Print color names instead of color rank integers.", long = "report-color-names")]
+        report_color_names: bool,
+
+        #[arg(help = "Print read names instead of read rank integers.", long = "report-read-names")]
+        report_read_names: bool,
+
+        #[arg(help = "Print lines for runs of k-mers not found in the index. The miss symbol is '-' normally, or 'none' when --report-color-names is set.", long = "report-misses")]
+        report_misses: bool,
     },
 
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
@@ -211,11 +217,6 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     }
 }
 
-fn get_bed_writer(query_path: &PathBuf, color_names: Vec<String>) -> BedWriter<BufWriter<std::io::Stdout>>{
-    let seq_names = load_seq_names(query_path);
-    let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
-    BedWriter::new(stdout, seq_names, color_names)
-}
 
 fn main() {
 
@@ -316,7 +317,7 @@ fn main() {
 
         },
 
-        Subcommands::Lookup{query: query_path, index: index_path, n_threads, k, bed} => {
+        Subcommands::Lookup{query: query_path, index: index_path, n_threads, k, report_color_names, report_read_names, report_misses} => {
             log::info!("Loading the index ...");
             let mut index_input = BufReader::new(File::open(&index_path)
                 .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
@@ -325,29 +326,25 @@ fn main() {
             let index = ColorIndex::load(&mut index_input);
             log::info!("Index loaded in {} seconds", index_loading_start.elapsed().as_secs_f64());
 
-            // 128kb = 2^17 byte buffer
-            let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
-
             let k = k.unwrap_or(index.k());
             if k > index.k() {
                 panic!("Error: query k = {} larger than indexing k = {}", k, index.k());
             } else if k == index.k() && index.is_flexible() {
-                log::warn!("Running with query k equal to indexing k. For faster queries, build a fixed-k index instead (no --flexible at indexing)"); 
+                log::warn!("Running with query k equal to indexing k. For faster queries, build a fixed-k index instead (no --flexible at indexing)");
             }
+
+            let color_names = report_color_names.then(|| index.color_names().to_vec());
+            let seq_names = report_read_names.then(|| load_seq_names(&query_path));
 
             let reader = DynamicFastXReader::from_file(&query_path)
                 .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
 
+            let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
+            let writer = OutputWriter::new(stdout, seq_names, color_names, report_misses);
+
             let batch_size = 10000;
             log::info!("Running queries from {} ...", query_path.display());
-            if bed {
-                let color_names = index.color_names().to_vec();
-                let writer = get_bed_writer(&query_path, color_names);
-                run_queries(n_threads, reader, index, batch_size, k, writer);
-            } else {
-                let writer = TsvWriter::new(stdout);
-                run_queries(n_threads, reader, index, batch_size, k, writer);
-            }
+            run_queries(n_threads, reader, index, batch_size, k, writer);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
