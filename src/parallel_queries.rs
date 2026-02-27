@@ -58,6 +58,15 @@ pub struct BedWriter<W: Write> {
 
 impl<W: Write> BedWriter<W> {
     pub fn new(out: W, seq_names: Vec<String>, color_names: Vec<String>) -> Self {
+        // Check that the special names used in write_run are not used as color names.
+        for name in color_names.iter() {
+            if name == "none" {
+                eprintln!("Error: can not use \"none\" as a color name because it is a reserved name");
+            }
+            if name == "multiple" {
+                eprintln!("Error: can not use \"multiple\" as a color name because it is a reserved name");
+            }
+        }
         Self { out, seq_names, color_names }
     }
 }
@@ -75,8 +84,8 @@ impl<W: Write + Send> RunWriter for BedWriter<W> {
                     let color_name = &self.color_names[c];
                     writeln!(self.out, "{seq_name}\t{}\t{}\t{color_name}", range.start, range.end).unwrap();
                 },
-                ColorVecValue::Multiple => writeln!(self.out, "{seq_name}\t{}\t{}\t*", range.start, range.end).unwrap(),
-                ColorVecValue::None => writeln!(self.out, "{seq_name}\t{}\t{}\tnovel", range.start, range.end).unwrap(),
+                ColorVecValue::Multiple => writeln!(self.out, "{seq_name}\t{}\t{}\tmultiple", range.start, range.end).unwrap(),
+                ColorVecValue::None => writeln!(self.out, "{seq_name}\t{}\t{}\tnone", range.start, range.end).unwrap(),
             }
         }
     }
