@@ -1,6 +1,6 @@
 #![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
 
-use std::{collections::HashMap, fs::File, io::{BufRead, BufReader, BufWriter, Read, Write}, path::PathBuf};
+use std::{fs::File, io::{BufRead, BufReader, BufWriter, Read, Write}, path::PathBuf};
 use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
 use jseqio::reader::DynamicFastXReader;
@@ -84,6 +84,13 @@ impl ColorIndex {
             ColorIndex::FixedK(_) => false,
         }
     }
+
+    fn color_names(&self) -> &[String] {
+        match self {
+            ColorIndex::FixedK(index) => index.color_names(),
+            ColorIndex::FlexibleK(index) => index.color_names(),
+        }
+    }
 }
 
 fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
@@ -151,11 +158,8 @@ pub enum Subcommands {
         #[arg(help = "Query k-mer length. Must be less or equal to the k used in index construction. If not given, defaults to the same k as during index construction.", short, required = false)]
         k: Option<usize>,
 
-        #[arg(help = "Output in BED format instead of TSV. Requires --colors.", long, requires = "colors")]
+        #[arg(help = "Output in BED format instead of TSV.", long)]
         bed: bool,
-
-        #[arg(help = "A tab-separated file with two columns: color_rank and color_name. Required when --bed is set.", long, requires = "bed")]
-        colors: Option<PathBuf>,
     },
 
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
@@ -178,42 +182,18 @@ impl sbwt::SeqStream for DynamicFastXReaderWrapper{
     }
 }
 
-fn load_bed_metadata(query_path: &PathBuf, colors_path: &PathBuf) -> (Vec<String>, HashMap<usize, String>) {
-
-    // First pass: collect sequence names from query FASTA/FASTQ
+fn load_seq_names(query_path: &PathBuf) -> Vec<String> {
     log::info!("Collecting sequence names from {} ...", query_path.display());
-    let mut name_reader = DynamicFastXReader::from_file(&query_path)
+    let mut name_reader = DynamicFastXReader::from_file(query_path)
         .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
     let mut seq_names = Vec::new();
     while let Some(rec) = name_reader.read_next().unwrap() {
         let header = std::str::from_utf8(rec.head).unwrap();
-        // Take the first whitespace-delimited token as the sequence name
         let name = header.split_whitespace().next().unwrap_or(header);
         seq_names.push(name.to_string());
     }
     log::info!("Collected {} sequence names from query file", seq_names.len());
-
-    // Parse colors file (tab-separated: color_rank\tcolor_name)
-    let mut color_names = HashMap::new();
-    let colors_file = BufReader::new(File::open(colors_path)
-        .unwrap_or_else(|e| panic!("Could not open colors file {}: {e}", colors_path.display())));
-    for line in colors_file.lines() {
-        let line = line.unwrap();
-        let line = line.trim();
-        if line.is_empty() { continue; }
-        let mut fields = line.split('\t');
-        let rank: usize = fields.next()
-            .unwrap_or_else(|| panic!("Missing color_rank in colors file"))
-            .parse()
-            .unwrap_or_else(|e| panic!("Invalid color_rank in colors file: {e}"));
-        let name = fields.next()
-            .unwrap_or_else(|| panic!("Missing color_name in colors file"))
-            .to_string();
-        color_names.insert(rank, name);
-    }
-    log::info!("Loaded {} color names from {}", color_names.len(), colors_path.display());
-
-    (seq_names, color_names)
+    seq_names
 }
 
 fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index: ColorIndex, batch_size: usize, k: usize, writer: W) {
@@ -231,8 +211,8 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     }
 }
 
-fn get_bed_writer(colors_path: &PathBuf, query_path: &PathBuf) -> BedWriter<BufWriter<std::io::Stdout>>{
-    let (seq_names, color_names) = load_bed_metadata(query_path, colors_path);
+fn get_bed_writer(query_path: &PathBuf, color_names: Vec<String>) -> BedWriter<BufWriter<std::io::Stdout>>{
+    let seq_names = load_seq_names(query_path);
     let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
     BedWriter::new(stdout, seq_names, color_names)
 }
@@ -336,7 +316,7 @@ fn main() {
 
         },
 
-        Subcommands::Lookup{query: query_path, index: index_path, n_threads, k, bed, colors} => {
+        Subcommands::Lookup{query: query_path, index: index_path, n_threads, k, bed} => {
             log::info!("Loading the index ...");
             let mut index_input = BufReader::new(File::open(&index_path)
                 .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
@@ -361,7 +341,8 @@ fn main() {
             let batch_size = 10000;
             log::info!("Running queries from {} ...", query_path.display());
             if bed {
-                let writer = get_bed_writer(&colors.unwrap(), &query_path);
+                let color_names = index.color_names().to_vec();
+                let writer = get_bed_writer(&query_path, color_names);
                 run_queries(n_threads, reader, index, batch_size, k, writer);
             } else {
                 let writer = TsvWriter::new(stdout);

@@ -173,6 +173,10 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         (self.sbwt, self.lcs, self.colors, self.n_colors, self.color_names)
     }
 
+    pub fn color_names(&self) -> &[String] {
+        &self.color_names
+    }
+
     pub fn k(&self) -> usize {
         self.sbwt.k()
     }

@@ -1,4 +1,4 @@
-use std::{cmp::{max, Reverse}, collections::HashMap, io::Write, ops::Range};
+use std::{cmp::{max, Reverse}, io::Write, ops::Range};
 use jseqio::seq_db::SeqDB;
 use crate::{color_storage::SimpleColorStorage, single_colored_kmers::SingleColoredKmers};
 use crate::traits::*;
@@ -53,11 +53,11 @@ impl<W: Write + Send> RunWriter for TsvWriter<W> {
 pub struct BedWriter<W: Write> {
     out: W,
     seq_names: Vec<String>,
-    color_names: HashMap<usize, String>,
+    color_names: Vec<String>,
 }
 
 impl<W: Write> BedWriter<W> {
-    pub fn new(out: W, seq_names: Vec<String>, color_names: HashMap<usize, String>) -> Self {
+    pub fn new(out: W, seq_names: Vec<String>, color_names: Vec<String>) -> Self {
         Self { out, seq_names, color_names }
     }
 }
@@ -72,8 +72,7 @@ impl<W: Write + Send> RunWriter for BedWriter<W> {
             let seq_name = &self.seq_names[seq_id as usize];
             match run_color {
                 ColorVecValue::Single(c) => {
-                    let color_name = self.color_names.get(&c)
-                        .unwrap_or_else(|| panic!("Color rank {c} not found in colors file"));
+                    let color_name = &self.color_names[c];
                     writeln!(self.out, "{seq_name}\t{}\t{}\t{color_name}", range.start, range.end).unwrap();
                 },
                 ColorVecValue::Multiple => writeln!(self.out, "{seq_name}\t{}\t{}\t*", range.start, range.end).unwrap(),
