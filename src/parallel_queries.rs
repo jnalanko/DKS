@@ -537,4 +537,117 @@ mod tests {
         random_test(8);
         random_test(1000);
     }
+
+    fn random_test_short_queries(batch_size: usize) {
+        let mut rng = rand_chacha::ChaCha8Rng::seed_from_u64(999);
+
+        let index_k = 7_usize;
+        let query_k = 4_usize;
+        assert!(query_k < index_k);
+
+        // Build random sequences and index them with index_k.
+        let mut sequences: Vec<Vec<u8>> = Vec::new();
+        for _ in 0..2 {
+            let len = (rng.next_u64() % 5000 + 1) as usize;
+            let seq: Vec<u8> = (0..len).map(|_| match rng.next_u64() % 4 {
+                0 => b'A',
+                1 => b'C',
+                2 => b'G',
+                _ => b'T',
+            }).collect();
+            sequences.push(seq);
+        }
+
+        // Build ground truth: for each short k-mer of length query_k, the color is
+        // determined by which sequences contain an index_k-mer whose last query_k
+        // characters are that short k-mer (colexicographic matching in SBWT).
+        let mut short_kmer_to_color = std::collections::HashMap::<Vec<u8>, Color>::new();
+        for (color, seq) in sequences.iter().enumerate() {
+            for kmer in seq.windows(index_k) {
+                let short_kmer = kmer[index_k - query_k..].to_vec();
+                match short_kmer_to_color.get(&short_kmer) {
+                    None => { short_kmer_to_color.insert(short_kmer, Color::Single(color)); }
+                    Some(Color::Single(old)) if *old != color => {
+                        short_kmer_to_color.insert(short_kmer, Color::Multiple);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Build SBWT with index_k
+        eprintln!("Building SBWT...");
+        let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
+            .add_rev_comp(false)
+            .k(index_k)
+            .build_lcs(true)
+            .n_threads(3)
+            .precalc_length(3)
+            .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
+        .run_from_vecs(&sequences);
+        let lcs = lcs.unwrap();
+
+        let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
+        eprintln!("Building SingleColoredKmers...");
+        let color_names: Vec<String> = (0..sequences.len()).map(|i| format!("{}", i)).collect();
+        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3);
+        eprintln!("SingleColoredKmers built");
+
+        // Generate random queries of lengths between 1 and 50
+        let n_queries = 1000;
+        let queries: Vec<Vec<u8>> = (0..n_queries).map(|_| {
+            let len = rng.next_u64() % 50 + 1;
+            (0..len).map(|_| match rng.next_u64() % 4 {
+                0 => b'A',
+                1 => b'C',
+                2 => b'G',
+                _ => b'T',
+            }).collect()
+        }).collect();
+
+        let out_vec = Vec::<u8>::new();
+        let out = std::io::Cursor::new(out_vec);
+        let mut writer = OutputWriter::new(out, None, None, false, true);
+        lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, query_k, &mut writer);
+
+        let output_str = String::from_utf8(writer.into_inner().into_inner()).unwrap();
+        let output_lines = output_str.lines();
+        let mut found_kmers: Vec<Vec<(usize, Color)>> = vec![Vec::new(); queries.len()];
+        for (line_idx, line) in output_lines.enumerate() {
+            if line_idx == 0 {
+                assert_eq!(line, "query_rank\tfrom_kmer\tto_kmer\tcolor");
+            } else {
+                let mut fields = line.split('\t');
+                let seq_id: usize = fields.next().unwrap().parse().unwrap();
+                let start: usize = fields.next().unwrap().parse().unwrap();
+                let end: usize = fields.next().unwrap().parse().unwrap();
+                let color_token = fields.next().unwrap();
+                let color = if color_token == "*" {
+                    Color::Multiple
+                } else {
+                    Color::Single(color_token.parse::<usize>().unwrap())
+                };
+                for i in start..=end {
+                    found_kmers[seq_id].push((i, color));
+                }
+            }
+        }
+
+        for query_id in 0..queries.len() {
+            let mut true_answer = Vec::<(usize, Color)>::new();
+            for (i, short_kmer) in queries[query_id].windows(query_k).enumerate() {
+                if let Some(color) = short_kmer_to_color.get(short_kmer) {
+                    true_answer.push((i, *color));
+                }
+            }
+            assert_eq!(true_answer, found_kmers[query_id], "mismatch at query_id={}", query_id);
+        }
+    }
+
+    #[test]
+    fn run_random_tests_short_queries() {
+        random_test_short_queries(4);
+        random_test_short_queries(5);
+        random_test_short_queries(1000);
+    }
 }

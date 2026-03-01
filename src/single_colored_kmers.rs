@@ -258,14 +258,14 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
     // Returns an iterator giving the color of each of the n-k+1 k-mers of the query.
     // k must be less or equal to the k in the SBWT index.
-    // If query is shorter than k, returns an empty.
+    // If query is shorter than k, returns an empty iterator.
     pub fn lookup_kmers<'a, 'b>(&'a self, query: &'b [u8], k: usize) -> KmerLookupIterator<'a, 'b, L, C>{
         assert!(k <= self.sbwt.k());
         let si = StreamingIndex {
             extend_right: &self.sbwt, 
             contract_left: &self.lcs,
             n: self.sbwt.n_sets(),
-            k: self.sbwt.k(), // Can be different than the k given as a parameter to this function!
+            k: self.sbwt.k(),
         };
 
         //let mut ms_iter = si.bounded_matching_statistics_iter(query, k);
