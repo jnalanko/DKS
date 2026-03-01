@@ -60,7 +60,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             }
             let n = self.index.sbwt.n_sets();
             while new_end < n && lcs.get_lcs(new_end) >= self.query_pattern_length {
-                color = color.union(self.index.get_color(new_start));
+                color = color.union(self.index.get_color(new_end));
                 if color == ColorVecValue::Multiple { return Some(ColorVecValue::Multiple) }
                 new_end += 1;
             }
