@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 // Splits `seq` into pieces of length at most `max_piece_len`, such that the pieces overlap
 // by k-1 characters. Calls f on pairs (piece_idx, piece). 
 // If seq has length less than k, calls f with a single empty piece.
@@ -37,4 +39,19 @@ pub fn process_kmers_in_pieces<F: FnMut(usize, &[u8])>(seq: &[u8], k: usize, max
 
         f(piece_idx, piece);
     }
+}
+
+pub fn for_each_run_with_key<T: Eq, KeyType: Eq, F1: Fn(&T) -> KeyType, F2: FnMut(Range<usize>)>(items: &[T], key_fn: F1, mut callback: F2) {
+    if items.is_empty() { return }
+
+    let mut run_start = 0;
+    let n = items.len();
+    for i in 1..n {
+        if key_fn(&items[i]) != key_fn(&items[i-1]) {
+            callback(run_start..i);
+            run_start = i;
+        }
+    }
+    // Final run
+    callback(run_start..n);
 }

@@ -1,4 +1,4 @@
-#![allow(non_snake_case, clippy::needless_range_loop)] // Using upper-case variable names from the source material
+#![allow(non_snake_case, clippy::needless_range_loop, clippy::len_zero)] // Using upper-case variable names from the source material
 
 use std::{fs::File, io::{BufRead, BufReader, BufWriter, Read, Write}, path::PathBuf};
 use clap::{Parser, Subcommand};

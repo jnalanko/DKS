@@ -116,6 +116,7 @@ impl<T: AtomicUint> AtomicColorVec for Vec<T> {
 
 struct ColoringBatch {
     dbs: Vec<(usize, SeqDB)>, // Pairs (color, seqs)
+    dummy_mer_dbs: Vec<(usize, SeqDB)>, // Pairs (color, seqs)
     total_len: usize,
 }
 
@@ -144,9 +145,35 @@ impl ColoringBatch {
         self.total_len += seq.len();
     }
 
+    fn push_dummy_mer(&mut self, color: usize, mer: &[u8]) {
+        // logic: push to the last DB if it has the right color,
+        // othewise create a new DB and push to that. Add the length
+        // of seq to self.total_len.
+
+        let mut extended = false;
+        if let Some((last_color, last_db)) = self.dummy_mer_dbs.last_mut() {
+            if *last_color == color {
+                // Extend last db
+                last_db.push_seq(mer);
+                extended = true;
+            }
+        }
+
+        if !extended {
+            // Start a new one
+            let mut db = SeqDB::new();
+            db.push_seq(mer);
+            self.dummy_mer_dbs.push((color, db));
+        }
+
+        self.total_len += mer.len();
+    }
+
     fn run<V: AtomicColorVec>(&self, si: &StreamingIndex<'_, SbwtIndex<SubsetMatrix>, LcsArray>, color_ids: &V, progress_counter: &AtomicU64) {
         let k = si.k();
         let mut thread_progress = 0_usize;
+
+        // Process full k-mers
         for (color, db) in self.dbs.iter() {
             for rec in db.iter() {
                 let seq = rec.seq;
@@ -175,7 +202,32 @@ impl ColoringBatch {
             }
         }
 
-        progress_counter.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
+        // Process dummy mers
+        for (color, db) in self.dummy_mer_dbs.iter() {
+            for rec in db.iter() {
+                let mer = rec.seq;
+                let ms = si.matching_statistics_iter(mer);
+                ms.for_each(|(len, range)| { 
+                    assert!(range.len() > 0);
+                    assert!(len < k);
+                    // IMPORTANT. We assume that all the dummy paths to the starts of
+                    // all the runs of ACGT are in the SBWT. Then this colex position
+                    // will correspond to a dummy node. We could add a check for this
+                    // but it's expensive.
+                    let colex = range.start;
+                    color_ids.update(colex, *color);
+                });
+                thread_progress += 1;
+                if thread_progress == 10000 {
+                    // Only record progress every 10000 iterations to reduce synchronization overhead. 
+                    // This made the code 30% faster in tests with 4 threads.
+                    progress_counter.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
+                    thread_progress = 0;
+                }
+            }
+        }
+
+        progress_counter.fetch_add(thread_progress as u64, std::sync::atomic::Ordering::Relaxed); // Add leftover progress
     }
 }
 
@@ -388,7 +440,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
             // Create a reader that pushes batches to workers
             let reader_handle = scope.spawn(move || {
-                let mut batch = ColoringBatch{dbs: vec![], total_len: 0};
+                let mut batch = ColoringBatch{dbs: vec![], dummy_mer_dbs: vec![], total_len: 0};
                 let b = 10000; // Batch size
                 let k = sbwt.k();
                 for (color, mut stream) in input_streams.into_iter().enumerate() {
@@ -396,9 +448,21 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                         crate::util::process_kmers_in_pieces(seq, k, b, |_piece_idx, piece: &[u8]|{
                             batch.push(color, piece);
 
+                            // Push dummy-mers
+                            crate::util::for_each_run_with_key(seq, |c| IS_DNA[*c as usize], |mut run_range: Range<usize>| {
+                                if !run_range.is_empty() && IS_DNA[seq[run_range.start] as usize] {
+                                    // Start of run of DNA characters
+                                    if run_range.len() >= k { // Clip to length k-1
+                                        run_range = run_range.end-(k-1)..run_range.end;
+                                    }
+                                    let mer = &seq[run_range.clone()];
+                                    batch.push_dummy_mer(color, mer);
+                                }
+                            });
+
                             if batch.total_len >= b {
                                 // Swap the current batch with an empty batch, and send it to processing
-                                let mut batch_to_send = ColoringBatch{dbs: vec![], total_len: 0}; // Empty batch
+                                let mut batch_to_send = ColoringBatch{dbs: vec![], dummy_mer_dbs: vec![], total_len: 0}; // Empty batch
                                 std::mem::swap(&mut batch, &mut batch_to_send);
                                 batch_send.send(batch_to_send).unwrap();
                             }
