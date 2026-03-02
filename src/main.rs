@@ -151,10 +151,10 @@ pub enum Subcommands {
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
 
-        #[arg(help = "Optional: a precomputed Bit Matrix SBWT file of the input k-mers.", short, long, help_heading = "Advanced use")]
+        #[arg(help = "Optional: a precomputed Bit Matrix SBWT file of the input k-mers. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
         sbwt_path: Option<PathBuf>,
 
-        #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file.", short, long, help_heading = "Advanced use")]
+        #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
 
         #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", long = "flexible", default_value = "false")]
