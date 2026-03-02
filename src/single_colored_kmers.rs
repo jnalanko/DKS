@@ -453,7 +453,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                                 if !run_range.is_empty() && IS_DNA[seq[run_range.start] as usize] {
                                     // Start of run of DNA characters
                                     if run_range.len() >= k { // Clip to length k-1
-                                        run_range = 0..k-1;
+                                        run_range = run_range.start..run_range.start+(k-1);
                                     }
                                     let mer = &seq[run_range.clone()];
                                     batch.push_dummy_mer(color, mer);
