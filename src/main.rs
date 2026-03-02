@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::OutputWriter;
 
-use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper}, wavelet_tree::WaveletTreeWrapper};
+use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper}, traits::ColorVecValue, wavelet_tree::WaveletTreeWrapper};
 
 mod single_colored_kmers;
 mod io;
@@ -206,6 +206,21 @@ pub enum Subcommands {
         #[arg(help = "Path to the index file", short, long, required = true)]
         index: PathBuf,
     },
+
+    #[command(arg_required_else_help = true, about = "Debug: build individual SBWTs per color and query them separately.")]
+    IndividualSbwtDebug {
+        #[arg(help = "A file with one fasta/fastq filename per line (one per color)", short, long, required = true, help_heading = "Input")]
+        input: PathBuf,
+
+        #[arg(help = "A fasta/fastq query file", short, long, required = true)]
+        query: PathBuf,
+
+        #[arg(help = "K-mer length (used for both indexing and querying)", short, required = true)]
+        k: usize,
+
+        #[arg(help = "Do not add reverse complemented k-mers", short = 'f', long = "forward-only")]
+        forward_only: bool,
+    },
 }
 
 struct DynamicFastXReaderWrapper {
@@ -395,6 +410,86 @@ fn main() {
             println!("Color run min length:  {}", stats.color_run_min);
             println!("Color run max length:  {}", stats.color_run_max);
             println!("Color run mean length: {:.2}", stats.color_run_mean);
+        },
+
+        Subcommands::IndividualSbwtDebug { input: input_fof, query: query_path, k, forward_only } => {
+            // a. Read input file-of-files
+            let input_paths: Vec<PathBuf> = BufReader::new(File::open(&input_fof)
+                .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", input_fof.display())))
+                .lines().map(|f| PathBuf::from(f.unwrap())).collect();
+
+            // b. Build one SBWT per input file, keeping all in memory
+            let mut indices = Vec::new();
+            for input_path in &input_paths {
+                log::info!("Building SBWT for {}", input_path.display());
+                let stream = LazyFileSeqStream::new(input_path.clone(), false);
+                let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
+                    .add_rev_comp(!forward_only)
+                    .k(k)
+                    .build_lcs(true)
+                    .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
+                    .run(stream);
+                indices.push((sbwt, lcs.unwrap()));
+            }
+
+            // c. Open query file
+            let mut reader = DynamicFastXReader::from_file(&query_path)
+                .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
+
+            // d. Create OutputWriter (same format as lookup command)
+            let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
+            let mut writer = OutputWriter::new(stdout, None, None, false, true);
+            writer.write_header();
+
+            // e. Stream query sequences, querying all SBWTs in lockstep
+            let mut seq_id: isize = 0;
+            while let Some(rec) = reader.read_next().unwrap() {
+                let mut ms_iters: Vec<_> = indices.iter()
+                    .map(|(sbwt, lcs)| {
+                        let si = sbwt::StreamingIndex::new(sbwt, lcs);
+                        si.matching_statistics_iter(rec.seq)
+                    })
+                    .collect();
+
+                // Skip first k-1 positions (not full k-mers yet)
+                for _ in 0..k.saturating_sub(1) {
+                    for iter in ms_iters.iter_mut() { iter.next(); }
+                }
+
+                // Advance all iterators in lockstep, run-length encoding on the fly
+                let mut run_start = 0usize;
+                let mut run_color = ColorVecValue::None;
+                let mut kmer_count = 0usize;
+                loop {
+                    let steps: Vec<Option<_>> = ms_iters.iter_mut().map(|it| it.next()).collect();
+                    if steps.iter().any(|s| s.is_none()) { break; }
+
+                    // Union colors: a k-mer is in color i iff its MS length == k
+                    let color = steps.into_iter().enumerate().fold(
+                        ColorVecValue::None,
+                        |acc, (color_id, step)| {
+                            let (len, _) = step.unwrap();
+                            if len == k { acc.union(ColorVecValue::Single(color_id)) }
+                            else { acc }
+                        },
+                    );
+
+                    if kmer_count == 0 {
+                        run_start = 0;
+                        run_color = color;
+                    } else if color != run_color {
+                        writer.write_run(seq_id, run_color, run_start..kmer_count);
+                        run_start = kmer_count;
+                        run_color = color;
+                    }
+                    kmer_count += 1;
+                }
+                if kmer_count > 0 {
+                    writer.write_run(seq_id, run_color, run_start..kmer_count);
+                }
+                seq_id += 1;
+            }
+            writer.flush();
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
