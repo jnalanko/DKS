@@ -438,20 +438,21 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                 let k = sbwt.k();
                 for (color, mut stream) in input_streams.into_iter().enumerate() {
                     while let Some(seq) = stream.stream_next() {
+                        // Push dummy-mers
+                        crate::util::for_each_run_with_key(seq, |c| IS_DNA[*c as usize], |mut run_range: Range<usize>| {
+                            if !run_range.is_empty() && IS_DNA[seq[run_range.start] as usize] {
+                                // Start of run of DNA characters
+                                if run_range.len() >= k { // Clip to length k-1
+                                    run_range = run_range.start..run_range.start+(k-1);
+                                }
+                                let mer = &seq[run_range.clone()];
+                                batch.push_dummy_mer(color, mer);
+                            }
+                        });
+
+                        // Push the rest in pieces, flushing when appropriate
                         crate::util::process_kmers_in_pieces(seq, k, b, |_piece_idx, piece: &[u8]|{
                             batch.push(color, piece);
-
-                            // Push dummy-mers
-                            crate::util::for_each_run_with_key(seq, |c| IS_DNA[*c as usize], |mut run_range: Range<usize>| {
-                                if !run_range.is_empty() && IS_DNA[seq[run_range.start] as usize] {
-                                    // Start of run of DNA characters
-                                    if run_range.len() >= k { // Clip to length k-1
-                                        run_range = run_range.start..run_range.start+(k-1);
-                                    }
-                                    let mer = &seq[run_range.clone()];
-                                    batch.push_dummy_mer(color, mer);
-                                }
-                            });
 
                             if batch.total_len >= b {
                                 // Swap the current batch with an empty batch, and send it to processing
