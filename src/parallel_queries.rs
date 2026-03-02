@@ -455,6 +455,7 @@ mod tests {
             .build_lcs(true)
             .n_threads(3)
             .precalc_length(3)
+            .add_all_dummy_paths(true)
             .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
         .run_from_vecs(&sequences);
         let lcs = lcs.unwrap();
