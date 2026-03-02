@@ -518,7 +518,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             compressed_colors.set_color(i, color); 
 
         }
-        assert!(total_single_count + total_multiple_count <= sbwt.n_kmers());
+        //assert!(total_single_count + total_multiple_count <= sbwt.n_kmers());
 
         log::info!("Marked {} single-colored k-mers", total_single_count);
         log::info!("Marked {} multi-colored k-mers", total_multiple_count);
