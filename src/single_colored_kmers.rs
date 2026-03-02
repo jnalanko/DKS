@@ -12,6 +12,12 @@ use sbwt::{ContractLeft, LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStr
 use crate::color_storage::SimpleColorStorage;
 use crate::traits::*;
 
+pub struct ColorStats {
+    pub single: usize,
+    pub multiple: usize,
+    pub uncolored: usize,
+}
+
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
 const IS_DNA: BitArray<[u32; 8]> = bitarr![const u32, Lsb0; 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
 
@@ -53,6 +59,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             // Expand the interval as long as it has at most single color and the
             // LCS is at least the query pattern length.
             let (mut new_start, mut new_end) = (range.start, range.end);
+            //eprintln!("Expanding from {}..{}, (len {})", new_start, new_end, new_end - new_start);
             while new_start > 0 && lcs.get_lcs(new_start) >= self.query_pattern_length {
                 new_start -= 1;
                 color = color.union(self.index.get_color(new_start));
@@ -64,6 +71,8 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                 if color == ColorVecValue::Multiple { return Some(ColorVecValue::Multiple) }
                 new_end += 1;
             }
+            //eprintln!("Expanded all the way to {}..{}, (len {})", new_start, new_end, new_end - new_start);
+
 
             Some(color)
         } else {
@@ -244,6 +253,22 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     #[allow(dead_code)]
     pub fn n_colors(&self) -> usize {
         self.n_colors
+    }
+
+    pub fn n_kmers(&self) -> usize {
+        self.sbwt.n_kmers()
+    }
+
+    pub fn color_stats(&self) -> ColorStats {
+        let mut stats = ColorStats { single: 0, multiple: 0, uncolored: 0 };
+        for i in 0..self.sbwt.n_sets() {
+            match self.get_color(i) {
+                ColorVecValue::Single(_) => stats.single += 1,
+                ColorVecValue::Multiple => stats.multiple += 1,
+                ColorVecValue::None => stats.uncolored += 1,
+            }
+        }
+        stats
     }
 
     pub fn get_color(&self, colex: usize) -> ColorVecValue {

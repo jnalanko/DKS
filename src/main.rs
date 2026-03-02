@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::OutputWriter;
 
-use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::LcsWrapper, wavelet_tree::WaveletTreeWrapper};
+use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper}, wavelet_tree::WaveletTreeWrapper};
 
 mod single_colored_kmers;
 mod io;
@@ -91,6 +91,27 @@ impl ColorIndex {
             ColorIndex::FlexibleK(index) => index.color_names(),
         }
     }
+
+    fn n_colors(&self) -> usize {
+        match self {
+            ColorIndex::FixedK(index) => index.n_colors(),
+            ColorIndex::FlexibleK(index) => index.n_colors(),
+        }
+    }
+
+    fn n_kmers(&self) -> usize {
+        match self {
+            ColorIndex::FixedK(index) => index.n_kmers(),
+            ColorIndex::FlexibleK(index) => index.n_kmers(),
+        }
+    }
+
+    fn color_stats(&self) -> ColorStats {
+        match self {
+            ColorIndex::FixedK(index) => index.color_stats(),
+            ColorIndex::FlexibleK(index) => index.color_stats(),
+        }
+    }
 }
 
 fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
@@ -169,6 +190,12 @@ pub enum Subcommands {
 
         #[arg(help = "Do not print the header line.", long = "no-header")]
         no_header: bool,
+    },
+
+    #[command(about = "Print statistics about an index file.")]
+    Stats {
+        #[arg(help = "Path to the index file", short, long, required = true)]
+        index: PathBuf,
     },
 
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
@@ -348,6 +375,21 @@ fn main() {
             let batch_size = 10000;
             log::info!("Running queries from {} ...", query_path.display());
             run_queries(n_threads, reader, index, batch_size, k, writer);
+        },
+
+        Subcommands::Stats { index: index_path } => {
+            let mut index_input = BufReader::new(File::open(&index_path)
+                .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
+            let index = ColorIndex::load(&mut index_input);
+
+            let stats = index.color_stats();
+            println!("Index type:            {}", if index.is_flexible() { "flexible-k" } else { "fixed-k" });
+            println!("k:                     {}", index.k());
+            println!("Number of colors:      {}", index.n_colors());
+            println!("Number of k-mers:      {}", index.n_kmers());
+            println!("Single-colored k-mers: {}", stats.single);
+            println!("Multi-colored k-mers:  {}", stats.multiple);
+            println!("Uncolored k-mers:      {}", stats.uncolored);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {

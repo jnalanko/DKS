@@ -558,17 +558,15 @@ mod tests {
             sequences.push(seq);
         }
 
-        // Build ground truth: for each short k-mer of length query_k, the color is
-        // determined by which sequences contain an index_k-mer whose last query_k
-        // characters are that short k-mer (colexicographic matching in SBWT).
+        // Build ground truth: for each query_k-mer, the color is determined by which
+        // input sequences contain that query_k-mer as a substring.
         let mut short_kmer_to_color = std::collections::HashMap::<Vec<u8>, Color>::new();
         for (color, seq) in sequences.iter().enumerate() {
-            for kmer in seq.windows(index_k) {
-                let short_kmer = kmer[index_k - query_k..].to_vec();
-                match short_kmer_to_color.get(&short_kmer) {
-                    None => { short_kmer_to_color.insert(short_kmer, Color::Single(color)); }
+            for short_kmer in seq.windows(query_k) {
+                match short_kmer_to_color.get(short_kmer) {
+                    None => { short_kmer_to_color.insert(short_kmer.to_vec(), Color::Single(color)); }
                     Some(Color::Single(old)) if *old != color => {
-                        short_kmer_to_color.insert(short_kmer, Color::Multiple);
+                        short_kmer_to_color.insert(short_kmer.to_vec(), Color::Multiple);
                     }
                     _ => {}
                 }
