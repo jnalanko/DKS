@@ -301,6 +301,7 @@ fn main() {
                         .build_lcs(true)
                         .n_threads(n_threads)
                         .precalc_length(8)
+                        .add_all_dummy_paths(true) // This is required for multi-k support
                         .algorithm(BitPackedKmerSortingDisk::new().dedup_batches(false).temp_dir(&td))
                     .run(all_input_seqs)
                 } else {
@@ -311,6 +312,7 @@ fn main() {
                         .build_lcs(true)
                         .n_threads(n_threads)
                         .precalc_length(8)
+                        .add_all_dummy_paths(true) // This is required for multi-k support
                         .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
                     .run(all_input_seqs)
                 };
