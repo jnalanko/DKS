@@ -217,13 +217,6 @@ impl ColoringBatch {
                     let colex = range.start;
                     color_ids.update(colex, *color);
                 });
-                thread_progress += 1;
-                if thread_progress == 10000 {
-                    // Only record progress every 10000 iterations to reduce synchronization overhead. 
-                    // This made the code 30% faster in tests with 4 threads.
-                    progress_counter.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
-                    thread_progress = 0;
-                }
             }
         }
 
