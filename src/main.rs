@@ -390,6 +390,9 @@ fn main() {
             println!("Single-colored k-mers: {}", stats.single);
             println!("Multi-colored k-mers:  {}", stats.multiple);
             println!("Uncolored k-mers:      {}", stats.uncolored);
+            println!("Color run min length:  {}", stats.color_run_min);
+            println!("Color run max length:  {}", stats.color_run_max);
+            println!("Color run mean length: {:.2}", stats.color_run_mean);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {

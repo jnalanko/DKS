@@ -16,6 +16,9 @@ pub struct ColorStats {
     pub single: usize,
     pub multiple: usize,
     pub uncolored: usize,
+    pub color_run_min: usize,
+    pub color_run_max: usize,
+    pub color_run_mean: f64,
 }
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
@@ -259,16 +262,47 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         self.sbwt.n_kmers()
     }
 
-    pub fn color_stats(&self) -> ColorStats {
-        let mut stats = ColorStats { single: 0, multiple: 0, uncolored: 0 };
-        for i in 0..self.sbwt.n_sets() {
-            match self.get_color(i) {
-                ColorVecValue::Single(_) => stats.single += 1,
-                ColorVecValue::Multiple => stats.multiple += 1,
-                ColorVecValue::None => stats.uncolored += 1,
+    fn color_run_stats(&self) -> (usize, usize, f64) { // (min, max, mean)
+        let n = self.sbwt.n_sets();
+        if n == 0 { return (0, 0, 0.0); }
+
+        let mut min = usize::MAX;
+        let mut max = 0_usize;
+        let mut n_runs = 0_usize;
+        let mut prev = self.get_color(0);
+        let mut run_len = 1_usize;
+        for i in 1..n {
+            let cur = self.get_color(i);
+            if cur == prev {
+                run_len += 1;
+            } else {
+                min = min.min(run_len);
+                max = max.max(run_len);
+                n_runs += 1;
+                run_len = 1;
+                prev = cur;
             }
         }
-        stats
+        min = min.min(run_len);
+        max = max.max(run_len);
+        n_runs += 1;
+        let mean = n as f64 / n_runs as f64;
+        (min, max, mean)
+    }
+
+    pub fn color_stats(&self) -> ColorStats {
+        let mut single = 0_usize;
+        let mut multiple = 0_usize;
+        let mut uncolored = 0_usize;
+        for i in 0..self.sbwt.n_sets() {
+            match self.get_color(i) {
+                ColorVecValue::Single(_) => single += 1,
+                ColorVecValue::Multiple => multiple += 1,
+                ColorVecValue::None => uncolored += 1,
+            }
+        }
+        let (color_run_min, color_run_max, color_run_mean) = self.color_run_stats();
+        ColorStats { single, multiple, uncolored, color_run_min, color_run_max, color_run_mean }
     }
 
     pub fn get_color(&self, colex: usize) -> ColorVecValue {
