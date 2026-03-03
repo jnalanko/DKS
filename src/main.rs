@@ -133,8 +133,11 @@ pub enum Subcommands {
         #[arg(short, required = true)]
         k: usize,
 
-        #[arg(help = "A file with one fasta/fastq filename per line", short, long, required = true, help_heading = "Input")]
-        input: PathBuf,
+        #[arg(help = "A file with one fasta/fastq filename per line, one per color", short, long, help_heading = "Input", conflicts_with = "sequence_colors")]
+        file_colors: Option<PathBuf>,
+
+        #[arg(help = "Give input as a single file, one sequence per color", short, long, help_heading = "Input", conflicts_with = "file_colors")]
+        sequence_colors: Option<PathBuf>,
 
         #[arg(help = "Optional: a fasta/fastq file containing the unitigs of all the k-mers in the input files. More generally, any sequence file with same k-mers will do (unitigs, matchtigs, eulertigs...). This speeds up construction and reduces the RAM and disk usage", short, long, help_heading = "Input")]
         unitigs: Option<PathBuf>,
@@ -145,13 +148,13 @@ pub enum Subcommands {
         #[arg(help = "Run in external memory construction mode using the given directory as temporary working space. This reduces the RAM peak but is slower. The resulting index will still be exactly the same.", long = "external-memory")]
         temp_dir: Option<PathBuf>,
 
-        #[arg(help = "Do not add reverse complemented k-mers", short = 'f', long = "forward-only")]
+        #[arg(help = "Do not add reverse complemented k-mers", long = "forward-only")]
         forward_only: bool,
 
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
 
-        #[arg(help = "Optional: a precomputed Bit Matrix SBWT file of the input k-mers. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
+        #[arg(help = "Optional: a precomputed Bit Matrix SBWT file of the input k-mers. Must have been built with --add-all-dummy-paths", short = 'b', long, help_heading = "Advanced use")]
         sbwt_path: Option<PathBuf>,
 
         #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
@@ -359,7 +362,12 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Subcommands::Build { input: input_fof, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible, color_names_file} => {
+        Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible, color_names_file} => {
+            let input_fof = if let Some(file_colors) = file_colors {
+                file_colors
+            } else {
+                unimplemented!() // Sequence colors
+            };
             let input_paths: Vec<PathBuf> = BufReader::new(File::open(&input_fof)
                 .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", input_fof.display())))
                 .lines().map(|f| PathBuf::from(f.unwrap())).collect();
