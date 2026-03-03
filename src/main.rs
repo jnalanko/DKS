@@ -3,7 +3,7 @@
 use std::{fs::File, io::{BufRead, BufReader, BufWriter, Read, Write}, path::PathBuf, sync::{Arc, Mutex}};
 use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
-use jseqio::reader::DynamicFastXReader;
+use jseqio::{reader::DynamicFastXReader, record::Record};
 use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::OutputWriter;
@@ -474,35 +474,33 @@ fn main() {
             } else {
                 let sc = sequence_colors.unwrap();
 
-                // First pass: collect sequence names (headers only, no sequence data kept)
-                let mut name_reader = DynamicFastXReader::from_file(&sc)
-                    .unwrap_or_else(|e| panic!("Could not open sequence-colors file {}: {e}", sc.display()));
-                let mut seq_names: Vec<String> = Vec::new();
-                while let Some(rec) = name_reader.read_next().unwrap() {
-                    seq_names.push(std::str::from_utf8(rec.head).unwrap().to_owned());
-                }
-                let n = seq_names.len();
+                let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
+                    log::info!("Reading color names from {}", names_path.display());
+                    let names: Vec<String> = BufReader::new(File::open(names_path)
+                        .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
+                        .lines().map(|l| l.unwrap()).collect();
+                    names
+                } else {
+                    log::info!("Reading sequence names from {}", sc.display());
+                    let mut pre_reader = DynamicFastXReader::from_file(&sc)
+                        .unwrap_or_else(|e| panic!("Could not open sequence-colors file {}: {e}", sc.display()));
+                    let mut names = Vec::<String>::new();
+                    while let Some(rec) = pre_reader.read_next().unwrap() {
+                        names.push(String::from_utf8(rec.name().to_vec()).unwrap());
+                    }
+                    names
+                };
 
-                // Second pass: shared reader — each stream reads its one record lazily
+                let n_colors = color_names.len();
+
                 let shared_reader = Arc::new(Mutex::new(
                     DynamicFastXReader::from_file(&sc)
                         .unwrap_or_else(|e| panic!("Could not open sequence-colors file {}: {e}", sc.display()))
                 ));
-                let individual_streams: Vec<io::SingleSeqStream> = (0..n)
+                let individual_streams: Vec<io::SingleSeqStream> = (0..n_colors)
                     .map(|_| io::SingleSeqStream::new(Arc::clone(&shared_reader), add_rev_comps))
                     .collect();
 
-                let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
-                    let names: Vec<String> = BufReader::new(File::open(names_path)
-                        .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
-                        .lines().map(|l| l.unwrap()).collect();
-                    if names.len() != n {
-                        panic!("Color names file has {} names but there are {} sequences", names.len(), n);
-                    }
-                    names
-                } else {
-                    seq_names
-                };
                 finish_build(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path);
             }
 
