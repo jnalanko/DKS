@@ -132,7 +132,7 @@ fn add_colors<T: sbwt::SeqStream + Send>(
     log::info!("Marking colors");
     let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
     if nones_to_multiples {
-        log::info!("Turning Nones in Multiples");
+        log::info!("Turning Nones into Multiples");
         index.turn_nones_to_multiples();
     }
 
