@@ -192,7 +192,7 @@ pub enum Subcommands {
         #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
 
-        #[arg(help = "Optional: a file with one color name per line, in the same order as the input files. Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
+        #[arg(help = "Optional: a tab-separated file with color id in the first column and color name in the second column (one entry per line, ids need not be sorted). Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
         color_names_file: Option<PathBuf>,
 
         #[arg(help = "Hidden option for the index with worst-case guarantees.", long = "flexible", default_value = "false", hide = true)]
@@ -301,6 +301,27 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     }
 }
 
+
+// Reads a color names file with format: "<id>\t<name>" per line (ids may be unsorted).
+// Returns names ordered by id (0, 1, 2, ...).
+fn read_color_names_file(path: &PathBuf) -> Vec<String> {
+    let mut pairs: Vec<(usize, String)> = BufReader::new(File::open(path)
+        .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", path.display())))
+        .lines()
+        .map(|l| {
+            let line = l.unwrap();
+            let mut parts = line.splitn(2, '\t');
+            let id: usize = parts.next().unwrap().trim().parse()
+                .unwrap_or_else(|_| panic!("Invalid color id in color names file: {line}"));
+            let name = parts.next()
+                .unwrap_or_else(|| panic!("Missing color name in color names file: {line}"))
+                .to_owned();
+            (id, name)
+        })
+        .collect();
+    pairs.sort_by_key(|(id, _)| *id);
+    pairs.into_iter().map(|(_, name)| name).collect()
+}
 
 fn individual_sbwt_debug(input_fof: &PathBuf, query_path: &PathBuf, k: usize, forward_only: bool, n_threads: usize) {
     // Read input file-of-files
@@ -463,9 +484,7 @@ fn main() {
                     .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", fc.display())))
                     .lines().map(|l| PathBuf::from(l.unwrap())).collect();
                 let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
-                    let names: Vec<String> = BufReader::new(File::open(names_path)
-                        .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
-                        .lines().map(|l| l.unwrap()).collect();
+                    let names = read_color_names_file(names_path);
                     if names.len() != input_paths.len() {
                         panic!("Color names file has {} names but there are {} input files", names.len(), input_paths.len());
                     }
@@ -482,10 +501,7 @@ fn main() {
 
                 let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
                     log::info!("Reading color names from {}", names_path.display());
-                    let names: Vec<String> = BufReader::new(File::open(names_path)
-                        .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
-                        .lines().map(|l| l.unwrap()).collect();
-                    names
+                    read_color_names_file(names_path)
                 } else {
                     log::info!("Reading sequence names from {}", sc.display());
                     let mut pre_reader = DynamicFastXReader::from_file(&sc)
