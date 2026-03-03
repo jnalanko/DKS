@@ -119,6 +119,33 @@ fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
     FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring, color_names)
 }
 
+fn finish_build<T: sbwt::SeqStream + Send>(
+    sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
+    lcs: LcsArray,
+    individual_streams: Vec<T>,
+    color_names: Vec<String>,
+    flexible: bool,
+    n_threads: usize,
+    out_path: PathBuf,
+) {
+    log::info!("Marking colors");
+    let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
+
+    let index = if flexible {
+        log::info!("Transforming index to support flexible queries");
+        ColorIndex::FlexibleK(into_flexible_index(index))
+    } else {
+        ColorIndex::FixedK(index)
+    };
+
+    log::info!("Writing to {}", out_path.display());
+    let mut out = BufWriter::new(File::create(out_path.clone())
+        .unwrap_or_else(|e| panic!("Could not create output file {}: {e}", out_path.display())));
+    index.serialize(&mut out);
+    let out_size = std::fs::metadata(&out_path).unwrap().len() as f64;
+    log::info!("Index size on disk: {}", human_bytes::human_bytes(out_size));
+}
+
 #[derive(Parser)]
 #[command(arg_required_else_help = true)]
 pub struct Cli {
@@ -363,21 +390,19 @@ fn main() {
 
     match args.command {
         Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible, color_names_file} => {
-            let input_fof = if let Some(file_colors) = file_colors {
-                file_colors
-            } else {
-                unimplemented!() // Sequence colors
-            };
-            let input_paths: Vec<PathBuf> = BufReader::new(File::open(&input_fof)
-                .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", input_fof.display())))
-                .lines().map(|f| PathBuf::from(f.unwrap())).collect();
-
             // Create output directory if does not exist
             std::fs::create_dir_all(out_path.parent().unwrap()).unwrap();
-            let mut out = BufWriter::new(File::create(out_path.clone())
-                .unwrap_or_else(|e| panic!("Could not create output file {}: {e}", out_path.display())));
 
             let add_rev_comps = !forward_only;
+
+            // Determine SBWT input paths (all sequences together for k-mer set building)
+            let sbwt_input_paths: Vec<PathBuf> = if let Some(ref fc) = file_colors {
+                BufReader::new(File::open(fc)
+                    .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", fc.display())))
+                    .lines().map(|l| PathBuf::from(l.unwrap())).collect()
+            } else {
+                vec![sequence_colors.as_ref().unwrap().clone()]
+            };
 
             let (sbwt, lcs) = if let Some(sbwt_path) = sbwt_path {
                 let mut input = BufReader::new(File::open(&sbwt_path)
@@ -398,7 +423,7 @@ fn main() {
                 let all_input_seqs = if let Some(unitigs_path) = unitigs_path {
                     io::ChainedInputStream::new(vec![unitigs_path.clone()])
                 } else {
-                    io::ChainedInputStream::new(input_paths.clone())
+                    io::ChainedInputStream::new(sbwt_input_paths)
                 };
                 let (sbwt, lcs) = if let Some(td) = temp_dir {
                     // Use disk-based construction
@@ -424,35 +449,51 @@ fn main() {
                     .run(all_input_seqs)
                 };
                 let lcs = lcs.unwrap(); // Ok because of build_lcs(true)
-                (sbwt,lcs)
+                (sbwt, lcs)
             };
 
-            let individual_streams = input_paths.iter().map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps)).collect();
-            let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
-                let names: Vec<String> = BufReader::new(File::open(names_path)
-                    .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
-                    .lines().map(|l| l.unwrap()).collect();
-                if names.len() != input_paths.len() {
-                    panic!("Color names file has {} names but there are {} input files", names.len(), input_paths.len());
+            if let Some(fc) = file_colors {
+                let input_paths: Vec<PathBuf> = BufReader::new(File::open(&fc)
+                    .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", fc.display())))
+                    .lines().map(|l| PathBuf::from(l.unwrap())).collect();
+                let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
+                    let names: Vec<String> = BufReader::new(File::open(names_path)
+                        .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
+                        .lines().map(|l| l.unwrap()).collect();
+                    if names.len() != input_paths.len() {
+                        panic!("Color names file has {} names but there are {} input files", names.len(), input_paths.len());
+                    }
+                    names
+                } else {
+                    input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect()
+                };
+                let individual_streams: Vec<LazyFileSeqStream> = input_paths.iter()
+                    .map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps))
+                    .collect();
+                finish_build(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path);
+            } else {
+                let sc = sequence_colors.unwrap();
+                let mut reader = DynamicFastXReader::from_file(&sc)
+                    .unwrap_or_else(|e| panic!("Could not open sequence-colors file {}: {e}", sc.display()));
+                let mut seq_names: Vec<String> = Vec::new();
+                let mut individual_streams: Vec<io::SingleSeqStream> = Vec::new();
+                while let Some(rec) = reader.read_next().unwrap() {
+                    seq_names.push(std::str::from_utf8(rec.head).unwrap().to_owned());
+                    individual_streams.push(io::SingleSeqStream::new(rec.seq.to_vec(), add_rev_comps));
                 }
-                names
-            } else {
-                input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect()
-            };
-            log::info!("Marking colors");
-            let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
-
-            let index = if flexible {
-                log::info!("Transforming index to support flexible queries");
-                ColorIndex::FlexibleK(into_flexible_index(index))
-            } else {
-                ColorIndex::FixedK(index)
-            };
-
-            log::info!("Writing to {}", out_path.display());
-            index.serialize(&mut out);
-            let out_size = std::fs::metadata(out_path).unwrap().len() as f64;
-            log::info!("Index size on disk: {}" , human_bytes::human_bytes(out_size));
+                let color_names: Vec<String> = if let Some(ref names_path) = color_names_file {
+                    let names: Vec<String> = BufReader::new(File::open(names_path)
+                        .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", names_path.display())))
+                        .lines().map(|l| l.unwrap()).collect();
+                    if names.len() != individual_streams.len() {
+                        panic!("Color names file has {} names but there are {} sequences", names.len(), individual_streams.len());
+                    }
+                    names
+                } else {
+                    seq_names
+                };
+                finish_build(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path);
+            }
 
         },
 

@@ -87,3 +87,33 @@ impl SeqStream for LazyFileSeqStream {
         })
     }
 }
+
+/// A single sequence that yields forward then (optionally) reverse-complement.
+pub struct SingleSeqStream {
+    seq: Vec<u8>,
+    revcomps_enabled: bool,
+    phase: u8, // 0=forward, 1=revcomp, 2=done
+}
+
+impl SingleSeqStream {
+    pub fn new(seq: Vec<u8>, revcomps_enabled: bool) -> Self {
+        Self { seq, revcomps_enabled, phase: 0 }
+    }
+}
+
+impl SeqStream for SingleSeqStream {
+    fn stream_next(&mut self) -> Option<&[u8]> {
+        match self.phase {
+            0 => {
+                self.phase = if self.revcomps_enabled { 1 } else { 2 };
+                Some(&self.seq)
+            }
+            1 => {
+                reverse_complement_in_place(&mut self.seq);
+                self.phase = 2;
+                Some(&self.seq)
+            }
+            _ => None,
+        }
+    }
+}

@@ -516,7 +516,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
         log::info!("Marked {} single-colored k-mers", total_single_count);
         log::info!("Marked {} multi-colored k-mers", total_multiple_count);
-        log::info!("{} k-mers left not marked", sbwt.n_kmers() - total_single_count - total_multiple_count);
+        log::info!("{} SBWT positions left not marked", sbwt.n_sets() - total_single_count - total_multiple_count);
 
         compressed_colors
 
