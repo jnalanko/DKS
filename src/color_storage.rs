@@ -48,6 +48,18 @@ impl ColorStorage for SimpleColorStorage {
             ColorVecValue::Single(x)
         }
     }
+
+    fn set_color(&mut self, colex: usize, value: ColorVecValue) {
+        let value = match value {
+            ColorVecValue::Single(x) => {
+                assert!(x < (1 << self.bits_per_color) - 2); 
+                x
+            },
+            ColorVecValue::Multiple => (1 << self.bits_per_color) - 2,
+            ColorVecValue::None => (1 << self.bits_per_color) - 1,
+        };
+        self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(value);
+    }
     
     fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
         // This is O(|range| in the worst case)
@@ -176,6 +188,11 @@ impl ColorStorage for WTColorStorage {
     fn get_color(&self, colex: usize) -> ColorVecValue {
         self.get_color(colex)
     }
+
+    fn set_color(&mut self, colex: usize, value: ColorVecValue) {
+        unimplemented!("WTColorStorage is immutable, cannot set color. Consider converting to SimpleColorStorage if you need mutability.");
+    }
+    
 
     fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
         self.get_color_of_range(range)

@@ -119,7 +119,7 @@ fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
     FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring, color_names)
 }
 
-fn finish_build<T: sbwt::SeqStream + Send>(
+fn add_colors<T: sbwt::SeqStream + Send>(
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
     lcs: LcsArray,
     individual_streams: Vec<T>,
@@ -127,9 +127,14 @@ fn finish_build<T: sbwt::SeqStream + Send>(
     flexible: bool,
     n_threads: usize,
     out_path: PathBuf,
+    nones_to_multiples: bool,
 ) {
     log::info!("Marking colors");
-    let index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
+    let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
+    if nones_to_multiples {
+        log::info!("Turning Nones in Multiples");
+        index.turn_nones_to_multiples();
+    }
 
     let index = if flexible {
         log::info!("Transforming index to support flexible queries");
@@ -187,11 +192,14 @@ pub enum Subcommands {
         #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
 
-        #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", long = "flexible", default_value = "false", hide = true)]
-        flexible: bool,
-
         #[arg(help = "Optional: a file with one color name per line, in the same order as the input files. Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
         color_names_file: Option<PathBuf>,
+
+        #[arg(help = "Hidden option for the index with worst-case guarantees.", long = "flexible", default_value = "false", hide = true)]
+        flexible: bool,
+
+        #[arg(help = "Hidden option: After building, turn all \"none\" colors into \"multiple\"", long = "none-to-multiple", default_value = "false", hide = true)]
+        none_to_multiple: bool,
 
     },
 
@@ -387,7 +395,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible, color_names_file} => {
+        Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible, color_names_file, none_to_multiple} => {
             // Create output directory if does not exist
             std::fs::create_dir_all(out_path.parent().unwrap()).unwrap();
 
@@ -468,7 +476,7 @@ fn main() {
                 let individual_streams: Vec<LazyFileSeqStream> = input_paths.iter()
                     .map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps))
                     .collect();
-                finish_build(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path);
+                add_colors(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path, none_to_multiple);
             } else {
                 let sc = sequence_colors.unwrap();
 
@@ -499,7 +507,7 @@ fn main() {
                     .map(|_| io::SingleSeqStream::new(Arc::clone(&shared_reader), add_rev_comps))
                     .collect();
 
-                finish_build(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path);
+                add_colors(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path, none_to_multiple);
             }
 
         },

@@ -36,6 +36,7 @@ pub trait ColoredKmerLookupAlgorithm {
 
 pub trait ColorStorage {
     fn get_color(&self, colex: usize) -> ColorVecValue;
+    fn set_color(&mut self, colex: usize, value: ColorVecValue);
     fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue;
 }
 

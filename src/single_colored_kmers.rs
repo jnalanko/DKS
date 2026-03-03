@@ -556,7 +556,14 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         SingleColoredKmers::<L, C> {
             sbwt, lcs: lcs_index, n_colors, colors: colors_index, color_names,
         }
+    }
 
+    pub fn turn_nones_to_multiples(&mut self) {
+        for i in 0..self.sbwt.n_sets() {
+            if self.get_color(i) == ColorVecValue::None {
+                self.colors.set_color(i, ColorVecValue::Multiple);
+            }
+        }
     }
 }
 
