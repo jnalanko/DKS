@@ -3,23 +3,12 @@ import sys
 import re
 
 def parse_time_output(lines):
-    """
-    Parse the output of /usr/bin/time -v.
-    Returns a dict with 'elapsed_seconds' and 'max_rss_bytes'.
-    """
-    rss_re = re.compile(r"Maximum resident set size.*:\s*(\d+)")
-    disk_re = re.compile(r"Temporary disk space peak: (\d+) bytes")
 
     elapsed_seconds = None
+    query_time_ns_per_bp = None
     max_rss_bytes = None
-    disk_peak = 0
 
-    # In case of Bifrost I've added prints like this:
-    # After simplify: 3.59465 seconds, 95416320 bytes RSS
-    # After buildColors: 3.63468 seconds, 96509952 bytes RSS
-
-    bifrost_time_after_simplify = None
-    bifrost_time_after_write = None
+    rss_re = re.compile(r"Maximum resident set size.*:\s*(\d+)")
 
     for line in lines:
         # Match elapsed time — supports h:mm:ss, m:ss, or s.s formats
@@ -43,32 +32,25 @@ def parse_time_output(lines):
             match = rss_re.search(line)
             if match:
                 max_rss_bytes = int(match.group(1)) * 1024  # convert KB to bytes
-        elif "Temporary disk space peak:" in line:
-            match = disk_re.search(line)
-            if match:
-                disk_peak = int(match.group(1))
-        elif "After simplify:" in line:
-            bifrost_time_after_simplify = float(line.split()[2])
-        elif "After write:" in line:
-            bifrost_time_after_write = float(line.split()[2])
-
-    bifrost_coloring_time = None
-    if bifrost_time_after_simplify != None and bifrost_time_after_write != None:
-        bifrost_coloring_time = bifrost_time_after_write - bifrost_time_after_simplify
-    return {"elapsed_seconds": elapsed_seconds, "max_rss_bytes": max_rss_bytes, "temp_disk": disk_peak, "bifrost_coloring_time": bifrost_coloring_time}
+        elif "Query time per base pair" in line:
+            print(line.split())
+            query_time_ns_per_bp = float(line.split()[-2])
+    return {"elapsed_seconds": elapsed_seconds, "max_rss_bytes": max_rss_bytes, "query_time_ns_per_bp": query_time_ns_per_bp}
 
 k_values = [15,23,31,39,47,55,63]
 
 # Print tsv for plotting in R
-print("\t".join(["k", "time_seconds", "mem_bytes"]))
+print("\t".join(["k", "elapsed_seconds", "query_time_ns_per_bp", "mem_bytes"]))
 for k in k_values:
     filename = f"logs/CHM13-k{k}-t1.log"
     try:
         res = parse_time_output(open(filename).readlines())
+        mem = res["max_rss_bytes"]
         time = res["elapsed_seconds"]
-        print("{}\t{}\t{}".format(k, time, res["max_rss_bytes"]))
+        ns_per_bp = res["query_time_ns_per_bp"]
+        print("{}\t{}\t{}\t{}".format(k, time, ns_per_bp, mem))
     except:
-        pass
+        sys.stderr.write("Error parsing " + filename + "\n")
 
 
 
