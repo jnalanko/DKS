@@ -192,7 +192,7 @@ pub enum Subcommands {
         #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
 
-        #[arg(help = "Optional: a tab-separated file with color id in the first column and color name in the second column (one entry per line, ids need not be sorted). Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
+        #[arg(help = "Optional: a file with one color name per line, in the same order as the input files. Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
         color_names_file: Option<PathBuf>,
 
         #[arg(help = "Hidden option for the index with worst-case guarantees.", long = "flexible", default_value = "false", hide = true)]
@@ -302,25 +302,13 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
 }
 
 
-// Reads a color names file with format: "<id>\t<name>" per line (ids may be unsorted).
-// Returns names ordered by id (0, 1, 2, ...).
+// Reads a color names file with one name per line.
 fn read_color_names_file(path: &PathBuf) -> Vec<String> {
-    let mut pairs: Vec<(usize, String)> = BufReader::new(File::open(path)
+    BufReader::new(File::open(path)
         .unwrap_or_else(|e| panic!("Could not open color names file {}: {e}", path.display())))
         .lines()
-        .map(|l| {
-            let line = l.unwrap();
-            let mut parts = line.splitn(2, '\t');
-            let id: usize = parts.next().unwrap().trim().parse()
-                .unwrap_or_else(|_| panic!("Invalid color id in color names file: {line}"));
-            let name = parts.next()
-                .unwrap_or_else(|| panic!("Missing color name in color names file: {line}"))
-                .to_owned();
-            (id, name)
-        })
-        .collect();
-    pairs.sort_by_key(|(id, _)| *id);
-    pairs.into_iter().map(|(_, name)| name).collect()
+        .map(|l| l.unwrap())
+        .collect()
 }
 
 fn individual_sbwt_debug(input_fof: &PathBuf, query_path: &PathBuf, k: usize, forward_only: bool, n_threads: usize) {
