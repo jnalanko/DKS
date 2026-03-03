@@ -123,7 +123,10 @@ impl SeqStream for SingleSeqStream {
                 self.phase = 2;
                 Some(&self.seq)
             }
-            _ => None,
+            _ => {
+                self.seq = Vec::new(); // free the allocation
+                None
+            }
         }
     }
 }
