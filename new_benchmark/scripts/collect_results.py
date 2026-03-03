@@ -33,7 +33,6 @@ def parse_time_output(lines):
             if match:
                 max_rss_bytes = int(match.group(1)) * 1024  # convert KB to bytes
         elif "Query time per base pair" in line:
-            print(line.split())
             query_time_ns_per_bp = float(line.split()[-2])
     return {"elapsed_seconds": elapsed_seconds, "max_rss_bytes": max_rss_bytes, "query_time_ns_per_bp": query_time_ns_per_bp}
 
