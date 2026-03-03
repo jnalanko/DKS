@@ -6,7 +6,7 @@ p <- ggplot(df, aes(x = k, y = query_time_ns_per_bp)) +
   geom_line() +
   geom_point(size = 2) +
   labs(
-    title = "Query time",
+    title = "Single-threaded query time",
     x = "k",
     y = "ns / character",
   ) +
