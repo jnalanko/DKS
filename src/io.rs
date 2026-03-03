@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use jseqio::{reader::DynamicFastXReader, reverse_complement_in_place};
 use sbwt::SeqStream;
@@ -88,16 +89,18 @@ impl SeqStream for LazyFileSeqStream {
     }
 }
 
-/// A single sequence that yields forward then (optionally) reverse-complement.
+/// Lazily reads one sequence from a shared reader on first access, then yields
+/// that sequence (and optionally its reverse complement) as a color stream.
 pub struct SingleSeqStream {
+    reader: Arc<Mutex<DynamicFastXReader>>,
     seq: Vec<u8>,
     revcomps_enabled: bool,
-    phase: u8, // 0=forward, 1=revcomp, 2=done
+    phase: u8, // 0=unread, 1=revcomp pending, 2=done
 }
 
 impl SingleSeqStream {
-    pub fn new(seq: Vec<u8>, revcomps_enabled: bool) -> Self {
-        Self { seq, revcomps_enabled, phase: 0 }
+    pub fn new(reader: Arc<Mutex<DynamicFastXReader>>, revcomps_enabled: bool) -> Self {
+        Self { reader, seq: Vec::new(), revcomps_enabled, phase: 0 }
     }
 }
 
@@ -105,6 +108,13 @@ impl SeqStream for SingleSeqStream {
     fn stream_next(&mut self) -> Option<&[u8]> {
         match self.phase {
             0 => {
+                {
+                    let mut guard = self.reader.lock().unwrap();
+                    let rec = guard.read_next().unwrap()
+                        .expect("SingleSeqStream: shared reader exhausted prematurely");
+                    self.seq.clear();
+                    self.seq.extend_from_slice(rec.seq);
+                } // guard and rec dropped here
                 self.phase = if self.revcomps_enabled { 1 } else { 2 };
                 Some(&self.seq)
             }
