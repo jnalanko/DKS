@@ -187,7 +187,7 @@ pub enum Subcommands {
         #[arg(help = "Optional: a precomputed LCS file of the optional SBWT file. Must have been built with --add-all-dummy-paths", short, long, help_heading = "Advanced use")]
         lcs_path: Option<PathBuf>,
 
-        #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", long = "flexible", default_value = "false")]
+        #[arg(help = "Build a flexible index supporting queries for any s-mer with s <= k. The index is slightly larger and the queries are approximately 3-10x slower.", long = "flexible", default_value = "false", hide = true)]
         flexible: bool,
 
         #[arg(help = "Optional: a file with one color name per line, in the same order as the input files. Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
@@ -284,9 +284,7 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     let reader = DynamicFastXReaderWrapper { inner: reader };
     match index {
         ColorIndex::FixedK(index) => {
-            if k < index.k() {
-                log::warn!("Querying with k shorter than the k that was used for indexing ({} < {}). This will give the right answers, but might be very slow! Consider indexing with --flexible instead for better performance.", k, index.k());
-            }
+
             parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
         },
         ColorIndex::FlexibleK(index) => {
@@ -518,8 +516,6 @@ fn main() {
             let k = k.unwrap_or(index.k());
             if k > index.k() {
                 panic!("Error: query k = {} larger than indexing k = {}", k, index.k());
-            } else if k == index.k() && index.is_flexible() {
-                log::warn!("Running with query k equal to indexing k. For faster queries, build a fixed-k index instead (no --flexible at indexing)");
             }
 
             let color_names = report_color_names.then(|| index.color_names().to_vec());
