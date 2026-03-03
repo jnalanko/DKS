@@ -1,4 +1,4 @@
-k_values = list(range(16,63+1,8))
+k_values = list(range(15,63+1,8))
 n_threads = 1
 
 for k in k_values:
