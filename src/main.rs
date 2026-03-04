@@ -57,7 +57,7 @@ impl ColorIndex {
         match type_id {
             FIXED_INDEX_TYPE_ID => {
                 let index = ColorIndex::FixedK(FixedKColorIndex::load(input));
-                log::info!("Loaded fixed-k index with k = {}", index.k());
+                log::info!("Loaded index with k = {}", index.k());
                 index
             },
             FLEXIBLE_INDEX_TYPE_ID => {
