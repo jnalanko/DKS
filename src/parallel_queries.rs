@@ -5,13 +5,13 @@ use crate::traits::*;
 
 pub trait RunWriter: Send {
     fn write_header(&mut self);
-    fn write_run(&mut self, seq_id: isize, run_color: ColorVecValue, range: Range<usize>);
+    fn write_run(&mut self, seq_id: isize, run_color: Option<usize>, range: Range<usize>);
     fn flush(&mut self);
 }
 
 impl<T: RunWriter + ?Sized> RunWriter for &mut T {
     fn write_header(&mut self) { (**self).write_header() }
-    fn write_run(&mut self, seq_id: isize, run_color: ColorVecValue, range: Range<usize>) { (**self).write_run(seq_id, run_color, range) }
+    fn write_run(&mut self, seq_id: isize, run_color: Option<usize>, range: Range<usize>) { (**self).write_run(seq_id, run_color, range) }
     fn flush(&mut self) { (**self).flush() }
 }
 
@@ -53,9 +53,9 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
         }
     }
 
-    fn write_run(&mut self, seq_id: isize, run_color: ColorVecValue, range: Range<usize>) {
+    fn write_run(&mut self, seq_id: isize, run_color: Option<usize>, range: Range<usize>) {
         if range.is_empty() { return; }
-        if matches!(run_color, ColorVecValue::None) && !self.report_misses { return; }
+        if matches!(run_color, None) && !self.report_misses { return; }
 
         let from = range.start;
         let to = range.end;
@@ -66,12 +66,11 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
         }
         write!(self.out, "\t{from}\t{to}\t").unwrap();
         match run_color {
-            ColorVecValue::Single(c) => match &self.color_names {
+            Some(c) => match &self.color_names {
                 Some(names) => write!(self.out, "{}", &names[c]).unwrap(),
                 None => write!(self.out, "{c}").unwrap(),
             },
-            ColorVecValue::Root => write!(self.out, "{}", if self.color_names.is_some() { "multiple" } else { "*" }).unwrap(),
-            ColorVecValue::None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
+            None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
         }
         writeln!(self.out).unwrap();
     }
@@ -94,7 +93,7 @@ struct QueryBatch {
 
 #[derive(Debug)]
 struct ProcessedQueryBatch {
-    result: Vec<ColorVecValue>,
+    result: Vec<Option<usize>>,
 
     batch_id: usize,
     sequence_starts: Vec<usize> 
@@ -131,7 +130,7 @@ impl QueryBatch {
         let total_query_kmers = self.seqs.iter().fold(0_usize, |acc, rec| 
             acc + kmers_in_n(self.k, rec.seq.len()) 
         );
-        let mut color_ids = Vec::<ColorVecValue>::with_capacity(total_query_kmers);
+        let mut color_ids = Vec::<Option<usize>>::with_capacity(total_query_kmers);
 
         for rec in self.seqs.iter() {
             for color in kmer_lookup_algo.lookup_kmers(rec.seq, self.k) {
@@ -175,7 +174,7 @@ struct OutputState {
     cur_seq_id: isize,
     run_open: Option<usize>,
     run_len: usize,
-    run_color: ColorVecValue, 
+    run_color: Option<usize>, 
 }
 
 fn output_batch_result(batch: &ProcessedQueryBatch, state: &mut OutputState, writer: &mut dyn RunWriter) {
@@ -233,7 +232,7 @@ fn output_thread(query_results: crossbeam::channel::Receiver<ProcessedQueryBatch
         cur_seq_id: -1,
         run_open: None, // Run of the same color (None counts as color). Value of None means that no run is active, not even a run of Nones.
         run_len: 0,
-        run_color: ColorVecValue::None,
+        run_color: None,
     };
 
     writer.write_header();
@@ -353,7 +352,7 @@ mod tests {
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream};
 
-    use crate::{color_storage::WTColorStorage, parallel_queries::{OutputWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers}};
+    use crate::{color_storage::SimpleColorStorage, parallel_queries::{OutputWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers}};
 
     struct SingleSeqStream {
         seq: Vec<u8>,
@@ -463,7 +462,7 @@ mod tests {
         let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
         eprintln!("Building SingleColoredKmers...");
         let color_names: Vec<String> = (0..sequences.len()).map(|i| format!("{}", i)).collect();
-        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
+        let sck = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
         eprintln!("SingleColoredKmers built");
 
         // Generate 1000 random queries of lengths between 1 and 100
@@ -590,7 +589,7 @@ mod tests {
         let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
         eprintln!("Building SingleColoredKmers...");
         let color_names: Vec<String> = (0..sequences.len()).map(|i| format!("{}", i)).collect();
-        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
+        let sck = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
         eprintln!("SingleColoredKmers built");
 
         // Generate random queries of lengths between 1 and 50
@@ -674,7 +673,7 @@ mod tests {
         let seqstreams: Vec<SingleSeqStream> = sequences.iter()
             .map(|s| SingleSeqStream::new(s.clone()))
             .collect();
-        let original = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(
+        let original = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(
             sbwt, lcs, seqstreams, color_names, 1, None,
         );
 
@@ -683,7 +682,7 @@ mod tests {
         original.serialize(&mut buf);
 
         // Deserialize
-        let loaded = SingleColoredKmers::<LcsWrapper, WTColorStorage>::load(&mut buf.as_slice());
+        let loaded = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::load(&mut buf.as_slice());
 
         // Check structural equality
         assert_eq!(original.k(), loaded.k());
