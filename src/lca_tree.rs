@@ -1,12 +1,13 @@
 use std::io::{self, Read, Write};
 
-/// A rooted tree with nodes labeled 0..n where 0 is the root.
-/// Supports LCA queries via a precomputed n^2 lookup table.
-/// `parent[0] == 0` (root is its own parent).
+/// A rooted tree where leaves occupy IDs 0..num_leaves and internal nodes occupy
+/// IDs num_leaves..n. The root is an internal node (or node 0 for a single-node tree).
+/// `parent[root] == root` (root is its own parent).
 #[derive(Debug)]
 pub struct LcaTree {
     n: usize,
-    /// parent[i] is the parent of node i; parent[0] == 0.
+    root: usize,
+    /// parent[i] is the parent of node i; parent[root] == root.
     parent: Vec<usize>,
     /// Flat n×n table: lca_table[i * n + j] = LCA(i, j)
     lca_table: Vec<usize>,
@@ -14,7 +15,9 @@ pub struct LcaTree {
 
 impl LcaTree {
     /// Construct a tree from `n` nodes and `edges`, where each edge `(child, parent)`
-    /// points toward the root (node 0). Returns an error if the edges do not form a valid tree.
+    /// points toward the root. Leaves must have IDs 0..num_leaves and internal nodes
+    /// must have IDs num_leaves..n. Returns an error if these conditions are not met or
+    /// if the edges do not form a valid tree.
     pub fn new(n: usize, edges: Vec<(usize, usize)>) -> Result<Self, String> {
         if n == 0 {
             return Err("Tree must have at least one node".to_string());
@@ -31,7 +34,6 @@ impl LcaTree {
 
         // usize::MAX = "not yet assigned"
         let mut parent = vec![usize::MAX; n];
-        parent[0] = 0;
         let mut children = vec![vec![]; n];
 
         for &(child, par) in &edges {
@@ -43,9 +45,6 @@ impl LcaTree {
             if child == par {
                 return Err(format!("Self-loop at node {child}"));
             }
-            if child == 0 {
-                return Err("Root node 0 cannot have a parent".to_string());
-            }
             if parent[child] != usize::MAX {
                 return Err(format!("Node {child} has multiple parents"));
             }
@@ -53,11 +52,29 @@ impl LcaTree {
             children[par].push(child);
         }
 
-        // BFS from root to compute depths and verify connectivity (no cycles, all reachable).
+        // The root is the unique node with no parent edge.
+        let root = (0..n)
+            .find(|&i| parent[i] == usize::MAX)
+            .ok_or_else(|| "No root found (cycle involving all nodes)".to_string())?;
+        parent[root] = root;
+
+        // Validate leaf/internal node ordering: leaves (empty children) must have IDs
+        // 0..num_leaves, internal nodes (non-empty children) must have IDs num_leaves..n.
+        let num_leaves = children.iter().take_while(|c| c.is_empty()).count();
+        for i in num_leaves..n {
+            if children[i].is_empty() {
+                return Err(format!(
+                    "Node {i} is a leaf but has ID >= {num_leaves}: \
+                     leaves must occupy IDs 0..{num_leaves}"
+                ));
+            }
+        }
+
+        // BFS from root to compute depths and verify connectivity.
         let mut depth = vec![usize::MAX; n];
-        depth[0] = 0;
+        depth[root] = 0;
         let mut queue = std::collections::VecDeque::new();
-        queue.push_back(0usize);
+        queue.push_back(root);
         let mut visited = 0usize;
 
         while let Some(node) = queue.pop_front() {
@@ -83,7 +100,7 @@ impl LcaTree {
             }
         }
 
-        Ok(LcaTree { n, parent, lca_table })
+        Ok(LcaTree { n, root, parent, lca_table })
     }
 
     fn naive_lca(mut a: usize, mut b: usize, parent: &[usize], depth: &[usize]) -> usize {
@@ -110,7 +127,11 @@ impl LcaTree {
         self.n
     }
 
-    /// Returns the parent of `node`. For the root, returns 0 (itself).
+    pub fn root(&self) -> usize {
+        self.root
+    }
+
+    /// Returns the parent of `node`. For the root, returns `root` (itself).
     pub fn parent(&self, node: usize) -> usize {
         assert!(node < self.n);
         self.parent[node]
@@ -123,6 +144,7 @@ impl LcaTree {
     /// as little-endian u64 values.
     pub fn serialize<W: Write>(&self, w: &mut W) -> io::Result<()> {
         write_u64(w, self.n as u64)?;
+        write_u64(w, self.root as u64)?;
         write_usize_slice(w, &self.parent)?;
         write_usize_slice(w, &self.lca_table)?;
         Ok(())
@@ -131,9 +153,10 @@ impl LcaTree {
     /// Load a tree previously written with [`serialize`].
     pub fn load<R: Read>(r: &mut R) -> io::Result<Self> {
         let n = read_u64(r)? as usize;
+        let root = read_u64(r)? as usize;
         let parent = read_usize_vec(r)?;
         let lca_table = read_usize_vec(r)?;
-        Ok(LcaTree { n, parent, lca_table })
+        Ok(LcaTree { n, root, parent, lca_table })
     }
 }
 
@@ -168,69 +191,72 @@ fn read_usize_vec<R: Read>(r: &mut R) -> io::Result<Vec<usize>> {
 mod tests {
     use super::*;
 
-    // Helper: build edges for a path 0-1-2-..-(n-1), edges point toward root (0).
-    fn path_edges(n: usize) -> Vec<(usize, usize)> {
-        (1..n).map(|i| (i, i - 1)).collect()
+    fn binary_tree() -> LcaTree {
+        // Complete binary tree, leaves first then internal nodes:
+        //         6        <- root (internal)
+        //        / \
+        //       4   5      <- internal
+        //      / \ / \
+        //     0  1 2  3   <- leaves
+        LcaTree::new(7, vec![(0,4),(1,4),(2,5),(3,5),(4,6),(5,6)]).unwrap()
     }
 
-    fn binary_tree() -> LcaTree {
-        // Complete binary tree with 7 nodes:
-        //         0
-        //        / \
-        //       1   2
-        //      / \ / \
-        //     3  4 5  6
-        LcaTree::new(7, vec![(1, 0), (2, 0), (3, 1), (4, 1), (5, 2), (6, 2)]).unwrap()
+    fn path_tree(n: usize) -> LcaTree {
+        // One leaf (node 0), internal nodes 1..n-1, root = n-1.
+        // Chain: 0 -> 1 -> 2 -> ... -> n-1
+        let edges = (0..n-1).map(|i| (i, i+1)).collect();
+        LcaTree::new(n, edges).unwrap()
     }
 
     #[test]
     fn single_node() {
         let t = LcaTree::new(1, vec![]).unwrap();
-        assert_eq!(t.lca(0, 0), 0);
-        assert_eq!(t.parent(0), 0); // root is its own parent
-    }
-
-    #[test]
-    fn path_graph_lca() {
-        // Tree: 0 - 1 - 2 - 3 - 4 (path)
-        let t = LcaTree::new(5, path_edges(5)).unwrap();
-
-        // LCA on a path = the shallower node
-        assert_eq!(t.lca(3, 4), 3);
-        assert_eq!(t.lca(4, 3), 3);
-        assert_eq!(t.lca(1, 4), 1);
-        assert_eq!(t.lca(0, 4), 0);
-        assert_eq!(t.lca(2, 2), 2);
+        assert_eq!(t.root(), 0);
+        assert_eq!(t.parent(0), 0);
         assert_eq!(t.lca(0, 0), 0);
     }
 
     #[test]
-    fn star_graph_lca() {
-        // Tree: 0 is root with children 1,2,3,4
-        let edges = vec![(1, 0), (2, 0), (3, 0), (4, 0)];
-        let t = LcaTree::new(5, edges).unwrap();
-
-        assert_eq!(t.lca(1, 2), 0);
-        assert_eq!(t.lca(3, 4), 0);
-        assert_eq!(t.lca(0, 3), 0);
-        assert_eq!(t.lca(2, 2), 2);
+    fn star_lca() {
+        // Leaves: 0,1,2,3  Internal/root: 4
+        let t = LcaTree::new(5, vec![(0,4),(1,4),(2,4),(3,4)]).unwrap();
+        assert_eq!(t.root(), 4);
+        assert_eq!(t.lca(0, 1), 4);
+        assert_eq!(t.lca(2, 3), 4);
+        assert_eq!(t.lca(0, 4), 4);
+        assert_eq!(t.lca(1, 1), 1);
     }
 
     #[test]
     fn binary_tree_lca() {
         let t = binary_tree();
+        assert_eq!(t.root(), 6);
 
-        assert_eq!(t.lca(3, 4), 1);
-        assert_eq!(t.lca(5, 6), 2);
-        assert_eq!(t.lca(3, 5), 0);
-        assert_eq!(t.lca(4, 6), 0);
-        assert_eq!(t.lca(3, 1), 1);
-        assert_eq!(t.lca(1, 2), 0);
-        assert_eq!(t.lca(0, 6), 0);
+        assert_eq!(t.lca(0, 1), 4);
+        assert_eq!(t.lca(2, 3), 5);
+        assert_eq!(t.lca(0, 2), 6);
+        assert_eq!(t.lca(1, 3), 6);
+        assert_eq!(t.lca(0, 4), 4);
+        assert_eq!(t.lca(4, 5), 6);
+        assert_eq!(t.lca(6, 0), 6);
         assert_eq!(t.lca(3, 3), 3);
 
-        assert_eq!(t.parent(3), 1);
-        assert_eq!(t.parent(0), 0); // root is its own parent
+        assert_eq!(t.parent(0), 4);
+        assert_eq!(t.parent(4), 6);
+        assert_eq!(t.parent(6), 6); // root is its own parent
+    }
+
+    #[test]
+    fn path_tree_lca() {
+        // Chain: 0 -> 1 -> 2 -> 3 -> 4 (root)
+        let t = path_tree(5);
+        assert_eq!(t.root(), 4);
+
+        // LCA is always the shallower (higher-ID) node since it's a chain
+        assert_eq!(t.lca(0, 1), 1);
+        assert_eq!(t.lca(0, 4), 4);
+        assert_eq!(t.lca(1, 3), 3);
+        assert_eq!(t.lca(2, 2), 2);
     }
 
     #[test]
@@ -259,6 +285,7 @@ mod tests {
         let t2 = LcaTree::load(&mut buf.as_slice()).unwrap();
 
         assert_eq!(t2.n(), 7);
+        assert_eq!(t2.root(), t.root());
         for i in 0..7 {
             for j in 0..7 {
                 assert_eq!(t2.lca(i, j), t.lca(i, j));
@@ -269,12 +296,13 @@ mod tests {
 
     #[test]
     fn serialize_roundtrip_path() {
-        let t = LcaTree::new(10, path_edges(10)).unwrap();
+        let t = path_tree(10);
         let mut buf = Vec::new();
         t.serialize(&mut buf).unwrap();
         let t2 = LcaTree::load(&mut buf.as_slice()).unwrap();
 
         assert_eq!(t2.n(), 10);
+        assert_eq!(t2.root(), t.root());
         for i in 0..10 {
             for j in 0..10 {
                 assert_eq!(t2.lca(i, j), t.lca(i, j));
@@ -286,40 +314,43 @@ mod tests {
 
     #[test]
     fn error_wrong_edge_count() {
-        let err = LcaTree::new(4, vec![(1, 0), (2, 0)]).unwrap_err();
+        let err = LcaTree::new(4, vec![(1, 3), (2, 3)]).unwrap_err();
         assert!(err.contains("edges"), "{err}");
     }
 
     #[test]
     fn error_self_loop() {
-        let err = LcaTree::new(3, vec![(1, 0), (1, 1)]).unwrap_err();
-        assert!(err.contains("Self-loop") || err.contains("multiple parents"), "{err}");
+        let err = LcaTree::new(3, vec![(0, 2), (2, 2)]).unwrap_err();
+        assert!(err.contains("Self-loop"), "{err}");
     }
 
     #[test]
     fn error_multiple_parents() {
-        // Node 2 gets two parents
-        let err = LcaTree::new(4, vec![(1, 0), (2, 0), (2, 1)]).unwrap_err();
+        // Node 0 gets two parents
+        let err = LcaTree::new(4, vec![(0, 2), (0, 3), (2, 3)]).unwrap_err();
         assert!(err.contains("multiple parents"), "{err}");
     }
 
     #[test]
     fn error_disconnected() {
-        // Nodes 1,2,3 form a cycle (each with one parent), node 0 has no children.
-        // Edge count is correct (3 edges for 4 nodes), but 0 is unreachable as ancestor.
+        // Nodes 1,2,3 form a cycle; node 0 is isolated (becomes "root" but unreachable from it)
         let err = LcaTree::new(4, vec![(1, 2), (2, 3), (3, 1)]).unwrap_err();
-        assert!(err.contains("disconnected") || err.contains("Root"), "{err}");
+        assert!(err.contains("disconnected"), "{err}");
     }
 
     #[test]
-    fn error_root_has_parent() {
-        let err = LcaTree::new(3, vec![(1, 0), (0, 2)]).unwrap_err();
-        assert!(err.contains("Root") || err.contains("parent"), "{err}");
+    fn error_wrong_leaf_internal_order() {
+        // Tree is valid structurally, but internal node 0 has a smaller ID than leaf 1.
+        //   0 (internal, root)
+        //  / \
+        // 1   2  <- leaves, but IDs 1,2 are >= internal ID 0: violation
+        let err = LcaTree::new(3, vec![(1, 0), (2, 0)]).unwrap_err();
+        assert!(err.contains("leaf") || err.contains("internal"), "{err}");
     }
 
     #[test]
     fn error_out_of_range_node() {
-        let err = LcaTree::new(3, vec![(1, 0), (5, 1)]).unwrap_err();
+        let err = LcaTree::new(3, vec![(0, 2), (5, 2)]).unwrap_err();
         assert!(err.contains("out-of-range"), "{err}");
     }
 
