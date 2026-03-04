@@ -14,8 +14,7 @@ use crate::lca_tree::LcaTree;
 use crate::traits::*;
 
 pub struct ColorStats {
-    pub single: usize,
-    pub multiple: usize,
+    pub colored: usize,
     pub uncolored: usize,
     pub color_run_min: usize,
     pub color_run_max: usize,
@@ -35,7 +34,7 @@ pub struct SingleColoredKmers<L: ContractLeft + Clone + MySerialize + From<LcsAr
 }
 
 impl<L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize+ From<SimpleColorStorage>> ColoredKmerLookupAlgorithm for SingleColoredKmers<L, C> {
-    fn lookup_kmers(&self, query: &[u8], k: usize) -> impl Iterator<Item = ColorVecValue> {
+    fn lookup_kmers(&self, query: &[u8], k: usize) -> impl Iterator<Item = Option<usize>> {
         self.lookup_kmers(query, k)
     }
 }
@@ -48,17 +47,19 @@ pub struct KmerLookupIterator<'a, 'b, L: ContractLeft + Clone + MySerialize + Fr
 }
 
 impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> Iterator for KmerLookupIterator<'_, '_, L, C> {
-    type Item = ColorVecValue; // Color id of k-mer
+    type Item = Option<usize>; // Color id of k-mer
 
     fn next(&mut self) -> Option<Self::Item> {
         let (len, range) = self.matching_stats_iter.next()?;
         let lcs = &self.index.lcs;
+        let hierarchy = self.index.color_hierarchy();
+        let root_id = hierarchy.root();
 
         if len >= self.query_pattern_length {
             // k-mer is found in the sbwt
             assert!(range.len() > 0);
             let mut color = self.index.get_color_of_range(range.clone());
-            if color == ColorVecValue::Root { return Some(color) }
+            if color == Some(root_id) { return Some(color) }
 
             // Expand the interval as long as it has at most single color and the
             // LCS is at least the query pattern length.
@@ -66,21 +67,23 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             //eprintln!("Expanding from {}..{}, (len {})", new_start, new_end, new_end - new_start);
             while new_start > 0 && lcs.get_lcs(new_start) >= self.query_pattern_length {
                 new_start -= 1;
-                color = color.union(self.index.get_color(new_start));
-                if color == ColorVecValue::Root { return Some(ColorVecValue::Root) }
+                if let Some(new_color) = self.index.get_color(new_start) {
+                    color = Some(hierarchy.lca(color, new_color));
+                    if color == Some(root_id) { return Some(color) } // This is a Some(Some(color)). Means that the iterator produced something.
+                }
             }
             let n = self.index.sbwt.n_sets();
             while new_end < n && lcs.get_lcs(new_end) >= self.query_pattern_length {
-                color = color.union(self.index.get_color(new_end));
-                if color == ColorVecValue::Root { return Some(ColorVecValue::Root) }
+                if let Some(new_color) = self.index.get_color(new_end) {
+                    color = Some(hierarchy.lca(color, new_color));
+                    if color == Some(root_id) { return Some(color) } // This is a Some(Some(color)). Means that the iterator produced something.
+                }
                 new_end += 1;
             }
-            //eprintln!("Expanded all the way to {}..{}, (len {})", new_start, new_end, new_end - new_start);
 
-
-            Some(color)
+            Some(color) // This is a Some(Some(color)). Means that the iterator produced something.
         } else {
-            Some(ColorVecValue::None) // Iterator not finished but the k-mer is not found -> no color
+            Some(None) // Iterator not finished but the k-mer is not found -> no color
         }
     }
 }
@@ -102,14 +105,12 @@ impl<T: AtomicUint> AtomicColorVec for Vec<T> {
         });
     }
 
-    fn read(&self, i: usize, root_id: usize) -> ColorVecValue {
+    fn read(&self, i: usize) -> Option<usize> {
         let x = self[i].load(std::sync::atomic::Ordering::Relaxed);
         if x == Self::none_sentinel() {
-            ColorVecValue::None
-        } else if x == root_id {
-            ColorVecValue::Root
+            None
         } else {
-            ColorVecValue::Single(x)
+            Some(x)
         }
     }
 
@@ -344,28 +345,26 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     }
 
     pub fn color_stats(&self) -> ColorStats {
-        let mut single = 0_usize;
-        let mut multiple = 0_usize;
         let mut uncolored = 0_usize;
+        let mut colored = 0_usize;
         for i in 0..self.sbwt.n_sets() {
             match self.get_color(i) {
-                ColorVecValue::Single(_) => single += 1,
-                ColorVecValue::Root => multiple += 1,
-                ColorVecValue::None => uncolored += 1,
+                Some(_) => colored += 1,
+                None => uncolored += 1,
             }
         }
         let (color_run_min, color_run_max, color_run_mean) = self.color_run_stats();
-        ColorStats { single, multiple, uncolored, color_run_min, color_run_max, color_run_mean }
+        ColorStats { colored, uncolored, color_run_min, color_run_max, color_run_mean }
     }
 
-    pub fn get_color(&self, colex: usize) -> ColorVecValue {
+    pub fn get_color(&self, colex: usize) -> Option<usize> {
         assert!(colex <= self.sbwt.n_sets());
         self.colors.get_color(colex)
     }
     
-    pub fn get_color_of_range(&self, colex_range: Range<usize>) -> ColorVecValue {
+    pub fn get_color_of_range(&self, colex_range: Range<usize>) -> Option<usize> {
         assert!(colex_range.end <= self.sbwt.n_sets());
-        self.colors.get_color_of_range(colex_range)
+        self.colors.get_color_of_range(colex_range, &self.color_hierarchy)
     }
 
     // Returns an iterator giving the color of each of the n-k+1 k-mers of the query.
@@ -509,22 +508,19 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         // Compress color_ids into a BitVec
         log::info!("Bitpacking color id array");
         let mut compressed_colors = SimpleColorStorage::new(sbwt.n_sets(), n_colors);
-        let mut total_single_count = 0_usize;
-        let mut total_multiple_count = 0_usize;
+        let mut total_some_count = 0_usize;
+        let mut total_none_count = 0_usize;
         for i in 0..sbwt.n_sets() {
-            let cv = color_ids.read(i, root_id);
+            let cv = color_ids.read(i);
             match cv {
-                ColorVecValue::Single(_) => total_single_count += 1,
-                ColorVecValue::Root => total_multiple_count += 1,
-                ColorVecValue::None => {},
+                Some(_) => total_some_count += 1,
+                None => total_none_count += 1,
             }
             compressed_colors.set_color(i, cv);
         }
-        //assert!(total_single_count + total_multiple_count <= sbwt.n_kmers());
 
-        log::info!("Marked {} single-colored k-mers", total_single_count);
-        log::info!("Marked {} multi-colored k-mers", total_multiple_count);
-        log::info!("{} SBWT positions left not marked", sbwt.n_sets() - total_single_count - total_multiple_count);
+        log::info!("Colored {} sbwt positions", total_some_count);
+        log::info!("{} sbwt positions left uncolored", total_none_count);
 
         compressed_colors
 
@@ -586,10 +582,11 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         }
     }
 
-    pub fn turn_nones_to_multiples(&mut self) {
+    pub fn turn_nones_to_roots(&mut self) {
+        let root_id = self.color_hierarchy.root();
         for i in 0..self.sbwt.n_sets() {
-            if self.get_color(i) == ColorVecValue::None {
-                self.colors.set_color(i, ColorVecValue::Root);
+            if self.get_color(i) == None {
+                self.colors.set_color(i, Some(root_id));
             }
         }
     }

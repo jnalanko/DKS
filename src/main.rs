@@ -109,8 +109,8 @@ fn add_colors<T: sbwt::SeqStream + Send>(
     log::info!("Marking colors");
     let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads, None);
     if nones_to_multiples {
-        log::info!("Turning Nones into Multiples");
-        index.turn_nones_to_multiples();
+        log::info!("Turning Nones into roots");
+        index.turn_nones_to_roots();
     }
 
     let index = ColorIndex::FixedK(index);
@@ -519,8 +519,8 @@ fn main() {
             println!("k:                     {}", index.k());
             println!("Number of colors in hierarchy:      {}", index.n_colors_in_hierarchy());
             println!("Number of k-mers:      {}", index.n_kmers());
-            println!("Single-colored k-mers: {}", stats.single);
-            println!("Multi-colored k-mers:  {}", stats.multiple);
+            println!("Colored SBWT positions: {}", stats.colored);
+            println!("Uncolored SBWT positions:  {}", stats.uncolored);
             println!("Uncolored k-mers:      {}", stats.uncolored);
             println!("Color run min length:  {}", stats.color_run_min);
             println!("Color run max length:  {}", stats.color_run_max);
