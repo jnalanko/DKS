@@ -58,7 +58,7 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
         if matches!(run_color, ColorVecValue::None) && !self.report_misses { return; }
 
         let from = range.start;
-        let to = range.end - 1;
+        let to = range.end;
 
         match &self.seq_names {
             Some(names) => write!(self.out, "{}", &names[seq_id as usize]).unwrap(),
@@ -512,7 +512,7 @@ mod tests {
                 } else {
                     Color::Single(color_token.parse::<usize>().unwrap())
                 };
-                for i in start..=end {
+                for i in start..end {
                     found_kmers[seq_id].push((i, color));
                 }
             }
@@ -627,7 +627,7 @@ mod tests {
                 } else {
                     Color::Single(color_token.parse::<usize>().unwrap())
                 };
-                for i in start..=end {
+                for i in start..end {
                     found_kmers[seq_id].push((i, color));
                 }
             }

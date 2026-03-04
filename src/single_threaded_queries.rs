@@ -10,8 +10,8 @@ fn print_run(seq_id: usize, run_color: ColorVecValue, range: Range<usize>) {
     // This code is almost duplicated in parallel_queries.rs
     if !range.is_empty() {
         match run_color {
-            ColorVecValue::Single(c) => println!("{seq_id}\t{}\t{}\t{}", range.start, range.end-1, c),
-            ColorVecValue::Multiple => println!("{seq_id}\t{}\t{}\t*", range.start, range.end-1),
+            ColorVecValue::Single(c) => println!("{seq_id}\t{}\t{}\t{}", range.start, range.end, c),
+            ColorVecValue::Multiple => println!("{seq_id}\t{}\t{}\t*", range.start, range.end),
             ColorVecValue::None => (), // Do not print runs of misses
         }
     }
