@@ -2,7 +2,7 @@ use std::{io::{Read, Write}, ops::Range};
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::sync::atomic::Ordering::Relaxed;
 
-use crate::{color_storage::SimpleColorStorage, single_colored_kmers::{KmerLookupIterator, SingleColoredKmers}};
+use crate::{color_storage::SimpleColorStorage, lca_tree::LcaTree, single_colored_kmers::{KmerLookupIterator, SingleColoredKmers}};
 
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum ColorVecValue {
@@ -52,9 +52,10 @@ pub trait LcsAccess {
 pub trait AtomicColorVec{
     // Represents None as the max value of the atomic type
 
-    fn update(&self, i: usize, x: usize); 
-    fn read(&self, i: usize) -> ColorVecValue;
     fn new(len: usize) -> Self; // Stores a None (=max_value()) to each position
+    fn update(&self, i: usize, x: usize, lca: &LcaTree);
+    fn read(&self, i: usize, root_id: usize) -> ColorVecValue;
+    fn none_sentinel() -> usize;        // the value used to represent "no color assigned"
 }
 
 pub trait AtomicUint {

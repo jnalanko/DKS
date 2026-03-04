@@ -88,32 +88,35 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
 
 impl<T: AtomicUint> AtomicColorVec for Vec<T> {
-    fn update(&self, i: usize, x: usize) {
-        assert!(x < T::max_value()-1); // MAX and MAX - 1 are reserved values
+    fn new(len: usize) -> Self {
+        (0..len).map(|_| T::new(T::max_value())).collect()
+    }
+
+    fn update(&self, i: usize, x: usize, lca: &LcaTree) {
+        debug_assert!(x != Self::none_sentinel(), "x must not be the none sentinel");
         self[i].fetch_update(|cur| {
-            if cur == T::max_value() || cur == x { // No value stored yet, or storing the same value
-                x // Update to x
-            } else { // Different value already stored
-                T::max_value()-1 // update to multiple
+            if cur == Self::none_sentinel() {
+                x               // first assignment: replace none with color
+            } else {
+                lca.lca(cur, x) // subsequent: merge via LCA
             }
         });
     }
 
-    fn read(&self, i: usize) -> ColorVecValue {
+    fn read(&self, i: usize, root_id: usize) -> ColorVecValue {
         let x = self[i].load(std::sync::atomic::Ordering::Relaxed);
-        if x == T::max_value(){
+        if x == Self::none_sentinel() {
             ColorVecValue::None
-        } else if x == T::max_value()-1 {
+        } else if x == root_id {
             ColorVecValue::Multiple
         } else {
             ColorVecValue::Single(x)
         }
     }
 
-    fn new(len: usize) -> Self {
-        (0..len).map(|_| T::new(T::max_value())).collect()
+    fn none_sentinel() -> usize {
+        T::max_value()
     }
-
 }
 
 struct ColoringBatch {
@@ -171,7 +174,7 @@ impl ColoringBatch {
         self.total_len += mer.len();
     }
 
-    fn run<V: AtomicColorVec>(&self, si: &StreamingIndex<'_, SbwtIndex<SubsetMatrix>, LcsArray>, color_ids: &V, progress_counter: &AtomicU64) {
+    fn run<V: AtomicColorVec>(&self, si: &StreamingIndex<'_, SbwtIndex<SubsetMatrix>, LcsArray>, color_ids: &V, progress_counter: &AtomicU64, lca_tree: &LcaTree) {
         let k = si.k();
         let mut thread_progress = 0_usize;
 
@@ -180,10 +183,10 @@ impl ColoringBatch {
             for rec in db.iter() {
                 let seq = rec.seq;
                 let ms = si.matching_statistics_iter(seq);
-                ms.enumerate().for_each(|(i, (len, range))| { 
+                ms.enumerate().for_each(|(i, (len, range))| {
                     if len == k {
                         debug_assert!(range.len() == 1); // Full k-mer should have a singleton range
-                        color_ids.update(range.start, *color);
+                        color_ids.update(range.start, *color, lca_tree);
                     } else if cfg!(debug_assertions) && i >= k-1 {
                         // All valid k-mers should be found. If we're here, the k-mer must have had non-ACGT
                         // characters which make it invalid. Let's verify that.
@@ -217,7 +220,7 @@ impl ColoringBatch {
                     // will correspond to a dummy node. We could add a check for this
                     // but it's expensive.
                     let colex = range.start;
-                    color_ids.update(colex, *color);
+                    color_ids.update(colex, *color, lca_tree);
                 });
             }
         }
@@ -419,7 +422,8 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
 
     // Generic function that works on any of u8, 16, u32 and u64
-    fn mark_colors<T: SeqStream + Send, A: AtomicColorVec + Send + Sync>(sbwt: &sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: &sbwt::LcsArray,  input_streams: Vec<T>, n_threads: usize) -> SimpleColorStorage {
+    fn mark_colors<T: SeqStream + Send, A: AtomicColorVec + Send + Sync>(sbwt: &sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: &sbwt::LcsArray, input_streams: Vec<T>, n_threads: usize, color_hierarchy: &LcaTree) -> SimpleColorStorage {
+        let root_id = color_hierarchy.root();
 
         let color_ids = A::new(sbwt.n_sets());
         let si = StreamingIndex::new(sbwt, lcs);
@@ -490,7 +494,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                 let color_ids_ref = &color_ids; // Moved into worker
                 worker_handles.push(scope.spawn(move || {
                     while let Ok(batch) = batch_recv_clone.recv() {
-                        batch.run(si_ref, color_ids_ref, n_bases_processed_ref);
+                        batch.run(si_ref, color_ids_ref, n_bases_processed_ref, color_hierarchy);
                     }
                 }));
             }
@@ -513,14 +517,13 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         let mut total_single_count = 0_usize;
         let mut total_multiple_count = 0_usize;
         for i in 0..sbwt.n_sets() {
-            let color = color_ids.read(i);
-            match color {
+            let cv = color_ids.read(i, root_id);
+            match cv {
                 ColorVecValue::Single(_) => total_single_count += 1,
                 ColorVecValue::Multiple => total_multiple_count += 1,
                 ColorVecValue::None => {},
             }
-            compressed_colors.set_color(i, color); 
-
+            compressed_colors.set_color(i, cv);
         }
         //assert!(total_single_count + total_multiple_count <= sbwt.n_kmers());
 
@@ -533,28 +536,41 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     }
 
 
-    pub fn new<T: SeqStream + Send>(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, input_streams: Vec<T>, color_names: Vec<String>, n_threads: usize, color_hierarchy: Option<LcaTree>) -> Self {
+    pub fn new<T: SeqStream + Send>(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, input_streams: Vec<T>, mut color_names: Vec<String>, n_threads: usize, color_hierarchy: Option<LcaTree>) -> Self {
         assert!(color_names.len() == input_streams.len());
-        let n_colors = input_streams.len();
+        for name in &color_names {
+            assert!(name != "root" && name != "none", "color name '{}' is reserved", name);
+        }
 
-        let required_bit_width = SimpleColorStorage::required_bit_width(n_colors);
+        // Build the color hierarchy before mark_colors so LCA-based merging can be used during indexing.
+        let color_hierarchy = color_hierarchy.unwrap_or_else(|| {
+            color_names.push("root".to_string());
+            let n = color_names.len(); // n_colors + 1
+            let edges = (0..n - 1).map(|i| (i, n - 1)).collect();
+            LcaTree::new(n, edges).expect("default hierarchy cannot fail")
+        });
+
+        let required_bit_width = SimpleColorStorage::required_bit_width(color_hierarchy.n() + 1); // +1 for the "none"
 
         log::info!("Marking colors");
         let color_storage = if required_bit_width <= 8 {
-            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU8>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU8>>(&sbwt, &lcs, input_streams, n_threads, &color_hierarchy)
         } else if required_bit_width <= 16 {
-            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU16>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU16>>(&sbwt, &lcs, input_streams, n_threads, &color_hierarchy)
         } else if required_bit_width <= 32 {
-            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU32>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU32>>(&sbwt, &lcs, input_streams, n_threads, &color_hierarchy)
         } else {
-            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads)
+            SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads, &color_hierarchy)
         };
 
-        Self::new_given_coloring(sbwt, lcs, color_storage, color_names, color_hierarchy)
+        Self::new_given_coloring(sbwt, lcs, color_storage, color_names, Some(color_hierarchy))
     }
 
     pub fn new_given_coloring(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, coloring: SimpleColorStorage, mut color_names: Vec<String>, color_hierarchy: Option<LcaTree>) -> Self {
         let n_colors = coloring.n_colors();
+        for name in color_names.iter().take(n_colors) {
+            assert!(name != "root" && name != "none", "color name '{}' is reserved", name);
+        }
 
         let color_hierarchy = color_hierarchy.unwrap_or_else(|| {
             color_names.push("root".to_string());

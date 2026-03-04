@@ -463,7 +463,7 @@ mod tests {
         let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
         eprintln!("Building SingleColoredKmers...");
         let color_names: Vec<String> = (0..sequences.len()).map(|i| format!("{}", i)).collect();
-        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3);
+        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
         eprintln!("SingleColoredKmers built");
 
         // Generate 1000 random queries of lengths between 1 and 100
@@ -590,7 +590,7 @@ mod tests {
         let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
         eprintln!("Building SingleColoredKmers...");
         let color_names: Vec<String> = (0..sequences.len()).map(|i| format!("{}", i)).collect();
-        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3);
+        let sck = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
         eprintln!("SingleColoredKmers built");
 
         // Generate random queries of lengths between 1 and 50
