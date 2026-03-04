@@ -84,6 +84,12 @@ impl ColorIndex {
         }
     }
 
+    fn root_id(&self) -> usize {
+        match self {
+            ColorIndex::FixedK(index) => index.color_hierarchy().root(),
+        }
+    }
+
     fn n_kmers(&self) -> usize {
         match self {
             ColorIndex::FixedK(index) => index.n_kmers(),
@@ -506,7 +512,7 @@ fn main() {
                 .unwrap_or_else(|e| panic!("Could not open query file {}: {e}", query_path.display()));
 
             let stdout = BufWriter::with_capacity(1 << 17, std::io::stdout());
-            let writer = OutputWriter::new(stdout, seq_names, color_names, report_misses, !no_header);
+            let writer = OutputWriter::new(stdout, seq_names, color_names, index.root_id(), report_misses, !no_header);
 
             let batch_size = 10000;
             log::info!("Running queries from {} ...", query_path.display());

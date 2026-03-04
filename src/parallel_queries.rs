@@ -19,12 +19,13 @@ pub struct OutputWriter<W: Write> {
     out: W,
     seq_names: Option<Vec<String>>,
     color_names: Option<Vec<String>>,
+    root_id: usize,
     report_misses: bool,
     print_header: bool,
 }
 
 impl<W: Write> OutputWriter<W> {
-    pub fn new(out: W, seq_names: Option<Vec<String>>, color_names: Option<Vec<String>>, report_misses: bool, print_header: bool) -> Self {
+    pub fn new(out: W, seq_names: Option<Vec<String>>, color_names: Option<Vec<String>>, root_id: usize, report_misses: bool, print_header: bool) -> Self {
         if let Some(names) = &color_names {
             for name in names {
                 if name == "none" {
@@ -35,7 +36,7 @@ impl<W: Write> OutputWriter<W> {
                 }
             }
         }
-        Self { out, seq_names, color_names, report_misses, print_header }
+        Self { out, seq_names, color_names, root_id, report_misses, print_header }
     }
 
     #[cfg(test)]
@@ -66,11 +67,12 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
         }
         write!(self.out, "\t{from}\t{to}\t").unwrap();
         match run_color {
+            None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
+            Some(c) if c == self.root_id => write!(self.out, "{}", if self.color_names.is_some() { "multiple" } else { "*" }).unwrap(),
             Some(c) => match &self.color_names {
                 Some(names) => write!(self.out, "{}", &names[c]).unwrap(),
                 None => write!(self.out, "{c}").unwrap(),
             },
-            None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
         }
         writeln!(self.out).unwrap();
     }
@@ -489,7 +491,7 @@ mod tests {
 
         let out_vec = Vec::<u8>::new();
         let out = std::io::Cursor::new(out_vec);
-        let mut writer = OutputWriter::new(out, None, None, false, true);
+        let mut writer = OutputWriter::new(out, None, None, sck.color_hierarchy().root(), false, true);
         lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, k, &mut writer);
 
         // Parse output tsv line by line
@@ -606,7 +608,7 @@ mod tests {
 
         let out_vec = Vec::<u8>::new();
         let out = std::io::Cursor::new(out_vec);
-        let mut writer = OutputWriter::new(out, None, None, false, true);
+        let mut writer = OutputWriter::new(out, None, None, sck.color_hierarchy().root(), false, true);
         lookup_parallel(2, MultiSeqStream::new(queries.clone()), &sck, batch_size, query_k, &mut writer);
 
         let output_str = String::from_utf8(writer.into_inner().into_inner()).unwrap();
