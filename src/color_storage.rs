@@ -1,3 +1,4 @@
+use crate::lca_tree::LcaTree;
 use crate::traits::*;
 use crate::wavelet_tree::WaveletTreeWrapper;
 use serde::{Serialize, Deserialize};
@@ -9,7 +10,7 @@ use std::ops::Range;
 pub struct SimpleColorStorage {
     colors: BitVec::<usize, Lsb0>,
     bits_per_color: usize,
-    n_colors: usize, // Number of single colors, not including the special colors for multiple and none.
+    n_colors: usize, // Number of colors, not including the special "none" color.
 }
 
 impl bitvec_sds::traits::RandomAccessU32 for SimpleColorStorage {
@@ -38,69 +39,61 @@ impl MySerialize for SimpleColorStorage {
 }
 
 impl ColorStorage for SimpleColorStorage {
-    fn get_color(&self, colex: usize) -> ColorVecValue {
+    fn get_color(&self, colex: usize) -> Option<usize> {
         let x: usize = self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le();
         if x == (1 << self.bits_per_color) - 1 { // Max value is reserved for None
-            ColorVecValue::None
-        } else if x == (1 << self.bits_per_color) - 2 { // Max - 1 is reserved for Multiple
-            ColorVecValue::Root
+            None
         } else {
-            ColorVecValue::Single(x)
+            Some(x)
         }
     }
 
-    fn set_color(&mut self, colex: usize, value: ColorVecValue) {
-        let value = match value {
-            ColorVecValue::Single(x) => {
-                assert!(x < (1 << self.bits_per_color) - 2); 
+    fn set_color(&mut self, colex: usize, value: Option<usize>) {
+        let x = match value {
+            None => (1 << self.bits_per_color) - 1,
+            Some(x) => {
+                assert!(x < (1 << self.bits_per_color) - 1);
                 x
-            },
-            ColorVecValue::Root => (1 << self.bits_per_color) - 2,
-            ColorVecValue::None => (1 << self.bits_per_color) - 1,
+            }
         };
-        self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(value);
+        
+        self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(x);
     }
     
-    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
+    fn get_color_of_range(&self, range: Range<usize>, color_hierarchy: &LcaTree) -> Option<usize> {
         // This is O(|range| in the worst case)
 
-        if range.is_empty() { return ColorVecValue::None }
+        if range.is_empty() { return None }
 
-        let mut existing_color: Option<usize> = None;
+        let mut lca: Option<usize> = None;
         for colex in range {
             match self.get_color(colex) {
-                ColorVecValue::Single(c) => {
-                    match existing_color {
-                        Some(e) => {
-                            if c != e {
-                                return ColorVecValue::Root;
-                            }    
-                        },
-                        None => existing_color = Some(c),
+                None => (),
+                Some(x) => {
+                    match lca {
+                        None => lca = Some(x),
+                        Some(y) => lca = Some(color_hierarchy.lca(x,y))
                     }
-                },
-                ColorVecValue::Root => return ColorVecValue::Root,
-                ColorVecValue::None => (),
+                }
+            }
+            if lca == Some(color_hierarchy.root()) {
+                // Already at root -> can early exit here
+                return lca
             }
         }
-
-        match existing_color {
-            Some(c) => ColorVecValue::Single(c),
-            None => ColorVecValue::None,
-        }
+        lca
     }
 }
 
 impl SimpleColorStorage {
 
-    pub fn set_color(&mut self, colex: usize, color: ColorVecValue) {
+    pub fn set_color(&mut self, colex: usize, color: Option<usize>) {
         let value = match color {
-            ColorVecValue::Single(x) => {
-                assert!(x < (1 << self.bits_per_color) - 2); 
+            None => (1 << self.bits_per_color) - 1, // Max value is reserved for None
+            Some(x) => {
+                assert!(x < (1 << self.bits_per_color) - 1);
                 x
-            },
-            ColorVecValue::Root => (1 << self.bits_per_color) - 2,
-            ColorVecValue::None => (1 << self.bits_per_color) - 1,
+            }
         };
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(value);
     }
@@ -115,104 +108,11 @@ impl SimpleColorStorage {
     }
 
     pub fn required_bit_width(n_colors: usize) -> usize {
-        log2_ceil(n_colors + 2) // +2 to reserve two special values: one for "no color" and one for "multiple colors"
-    }
-
-    pub fn into_wavelet_tree_storage(self) -> WTColorStorage {
-        assert!(self.bits_per_color <= 32);
-        let value_range_end = 1 << self.bits_per_color; // Exclusive end of the supported value range
-
-        let wt = crate::wavelet_tree::WaveletTreeWrapper::new(self, value_range_end);
-        WTColorStorage { colors: wt }
+        log2_ceil(n_colors + 1) // +1 is for the special "none" value 
     }
 
     pub fn n_colors(&self) -> usize {
         self.n_colors
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct WTColorStorage {
-    colors: crate::wavelet_tree::WaveletTreeWrapper,
-}
-
-impl WTColorStorage {
-    fn get_color(&self, colex: usize) -> ColorVecValue {
-        let x = self.colors.access(colex) as usize;
-        let none_id = self.colors.value_range().end-1; // Max value is reserved for None
-        let multiple_id = none_id - 1; // Max - 1 is reserved for Multiple
-        if x == none_id { 
-            ColorVecValue::None
-        } else if x == multiple_id { 
-            ColorVecValue::Root
-        } else {
-            ColorVecValue::Single(x)
-        }
-    }
-
-    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
-        if range.is_empty() { return ColorVecValue::None }
-
-        let none_id = self.colors.value_range().end-1; // Max value is reserved for None
-        let multiple_id = none_id - 1; // Max - 1 is reserved for Multiple
-
-        let (a,b) = self.colors.range_bottom2(range.start, range.end);
-
-        match (a,b) {
-            (None, None) => {
-                assert!(range.is_empty());
-                ColorVecValue::None
-            }
-            (None, Some(_)) => panic!("range_bottom2 returned (None, Some)"), // Should never happen
-            (Some(x), None) => {
-                let x = x as usize;
-                if x == none_id { ColorVecValue::None }
-                else if x == multiple_id { ColorVecValue::Root }
-                else { ColorVecValue::Single(x) }
-            },
-            (Some(x), Some(y)) => {
-                let x = x as usize;
-                let y = y as usize; // If x or y is none_id, it's this, because none_id is the largest possible
-                if y == none_id && x != multiple_id {
-                    ColorVecValue::Single(x)
-                } else {
-                    ColorVecValue::Root
-                }
-            },
-        }
-    }
-
-}
-
-impl ColorStorage for WTColorStorage {
-    fn get_color(&self, colex: usize) -> ColorVecValue {
-        self.get_color(colex)
-    }
-
-    fn set_color(&mut self, colex: usize, value: ColorVecValue) {
-        unimplemented!("WTColorStorage is immutable, cannot set color. Consider converting to SimpleColorStorage if you need mutability.");
-    }
-    
-
-    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue {
-        self.get_color_of_range(range)
-    }
-}
-
-impl MySerialize for WTColorStorage {
-    fn serialize(&self, out: &mut impl Write) {
-        self.colors.serialize(out);
-    }
-
-    fn load(input: &mut impl Read) -> Box<Self> {
-        let colors = WaveletTreeWrapper::load(input);
-        Box::new(WTColorStorage { colors })
-    }
-}
-
-impl From<SimpleColorStorage> for WTColorStorage {
-    fn from(s: SimpleColorStorage) -> Self {
-        s.into_wavelet_tree_storage() 
     }
 }
 

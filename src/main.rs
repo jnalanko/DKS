@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::OutputWriter;
 
-use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper}, traits::ColorVecValue, wavelet_tree::WaveletTreeWrapper};
+use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper}};
 
 mod single_colored_kmers;
 mod lca_tree;
@@ -21,16 +21,14 @@ mod traits;
 mod color_storage;
 
 type FixedKColorIndex = SingleColoredKmers<LcsWrapper, SimpleColorStorage>;
-type FlexibleKColorIndex = SingleColoredKmers<WaveletTreeWrapper, SimpleColorStorage>;
 
-enum ColorIndex {
+enum ColorIndex { // For now just one variant, might add more later
     FixedK(FixedKColorIndex),
-    FlexibleK(FlexibleKColorIndex),
 }
 
 const DKS_FILE_ID: [u8; 8] = *b"dks0.1.2";
 const FIXED_INDEX_TYPE_ID: [u8; 4] = *b"fixd";
-const FLEXIBLE_INDEX_TYPE_ID: [u8; 4] = *b"flex";
+//const FLEXIBLE_INDEX_TYPE_ID: [u8; 4] = *b"flex";
 
 impl ColorIndex {
     fn serialize(&self, out: &mut impl Write) {
@@ -40,11 +38,6 @@ impl ColorIndex {
                 out.write_all(&FIXED_INDEX_TYPE_ID).unwrap();
                 index.serialize(out);
             },
-            ColorIndex::FlexibleK(index) => {
-                out.write_all(&DKS_FILE_ID).unwrap();
-                out.write_all(&FLEXIBLE_INDEX_TYPE_ID).unwrap();
-                index.serialize(out);
-            }
         }
     }
 
@@ -61,11 +54,6 @@ impl ColorIndex {
                 log::info!("Loaded index with k = {}", index.k());
                 index
             },
-            FLEXIBLE_INDEX_TYPE_ID => {
-                let index = ColorIndex::FlexibleK(FlexibleKColorIndex::load(input));
-                log::info!("Loaded flexible-k index with k = {}", index.k());
-                index
-            },
             _ => {
                 panic!("Unknown index type ID in DKS file: {}", String::from_utf8_lossy(&type_id));
             }
@@ -75,13 +63,11 @@ impl ColorIndex {
     fn k(&self) -> usize {
         match self {
             ColorIndex::FixedK(index) => index.k(),
-            ColorIndex::FlexibleK(index) => index.k(),
         }
     }
 
     fn is_flexible(&self) -> bool {
         match self {
-            ColorIndex::FlexibleK(_) => true,
             ColorIndex::FixedK(_) => false,
         }
     }
@@ -89,35 +75,26 @@ impl ColorIndex {
     fn color_names(&self) -> &[String] {
         match self {
             ColorIndex::FixedK(index) => index.color_names(),
-            ColorIndex::FlexibleK(index) => index.color_names(),
         }
     }
 
     fn n_colors_in_hierarchy(&self) -> usize {
         match self {
             ColorIndex::FixedK(index) => index.n_colors_in_hierarchy(),
-            ColorIndex::FlexibleK(index) => index.n_colors_in_hierarchy(),
         }
     }
 
     fn n_kmers(&self) -> usize {
         match self {
             ColorIndex::FixedK(index) => index.n_kmers(),
-            ColorIndex::FlexibleK(index) => index.n_kmers(),
         }
     }
 
     fn color_stats(&self) -> ColorStats {
         match self {
             ColorIndex::FixedK(index) => index.color_stats(),
-            ColorIndex::FlexibleK(index) => index.color_stats(),
         }
     }
-}
-
-fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
-    let (sbwt, lcs, coloring, color_names, color_hierarchy) = fixed_index.into_parts();
-    FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring, color_names, Some(color_hierarchy))
 }
 
 fn add_colors<T: sbwt::SeqStream + Send>(
@@ -125,7 +102,6 @@ fn add_colors<T: sbwt::SeqStream + Send>(
     lcs: LcsArray,
     individual_streams: Vec<T>,
     color_names: Vec<String>,
-    flexible: bool,
     n_threads: usize,
     out_path: PathBuf,
     nones_to_multiples: bool,
@@ -137,12 +113,7 @@ fn add_colors<T: sbwt::SeqStream + Send>(
         index.turn_nones_to_multiples();
     }
 
-    let index = if flexible {
-        log::info!("Transforming index to support flexible queries");
-        ColorIndex::FlexibleK(into_flexible_index(index))
-    } else {
-        ColorIndex::FixedK(index)
-    };
+    let index = ColorIndex::FixedK(index);
 
     log::info!("Writing to {}", out_path.display());
     let mut out = BufWriter::new(File::create(out_path.clone())
@@ -195,9 +166,6 @@ pub enum Subcommands {
 
         #[arg(help = "Optional: a file with one color name per line, in the same order as the input files. Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
         color_names_file: Option<PathBuf>,
-
-        #[arg(help = "Hidden option for the index with worst-case guarantees.", long = "flexible", default_value = "false", hide = true)]
-        flexible: bool,
 
         #[arg(help = "Hidden option: After building, turn all \"none\" colors into \"multiple\"", long = "none-to-multiple", default_value = "false", hide = true)]
         none_to_multiple: bool,
@@ -293,12 +261,8 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     let reader = DynamicFastXReaderWrapper { inner: reader };
     match index {
         ColorIndex::FixedK(index) => {
-
             parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
         },
-        ColorIndex::FlexibleK(index) => {
-            parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
-        }
     }
 }
 
@@ -359,7 +323,7 @@ fn individual_sbwt_debug(input_fof: &PathBuf, query_path: &PathBuf, k: usize, fo
 
         // Advance all iterators in lockstep, run-length encoding on the fly
         let mut run_start = 0usize;
-        let mut run_color = ColorVecValue::None;
+        let mut run_color = None;
         let mut kmer_count = 0usize;
         loop {
             let steps: Vec<Option<_>> = ms_iters.iter_mut().map(|it| it.next()).collect();
@@ -367,7 +331,7 @@ fn individual_sbwt_debug(input_fof: &PathBuf, query_path: &PathBuf, k: usize, fo
 
             // Union colors: a k-mer is in color i iff its MS length == k
             let color = steps.into_iter().enumerate().fold(
-                ColorVecValue::None,
+                None,
                 |acc, (color_id, step)| {
                     let (len, _) = step.unwrap();
                     if len == k { acc.union(ColorVecValue::Single(color_id)) }
@@ -405,7 +369,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, flexible, color_names_file, none_to_multiple} => {
+        Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, color_names_file, none_to_multiple} => {
             // Create output directory if does not exist
             std::fs::create_dir_all(out_path.parent().unwrap()).unwrap();
 
@@ -484,7 +448,7 @@ fn main() {
                 let individual_streams: Vec<LazyFileSeqStream> = input_paths.iter()
                     .map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps))
                     .collect();
-                add_colors(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path, none_to_multiple);
+                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, none_to_multiple);
             } else {
                 let sc = sequence_colors.unwrap();
 
@@ -512,7 +476,7 @@ fn main() {
                     .map(|_| io::SingleSeqStream::new(Arc::clone(&shared_reader), add_rev_comps))
                     .collect();
 
-                add_colors(sbwt, lcs, individual_streams, color_names, flexible, n_threads, out_path, none_to_multiple);
+                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, none_to_multiple);
             }
 
         },
@@ -581,11 +545,7 @@ fn main() {
                 ColorIndex::FixedK(index) => {
                     single_threaded_queries::lookup_single_threaded(&query_path, &index, index.k());
                 },
-                ColorIndex::FlexibleK(index) => {
-                    single_threaded_queries::lookup_single_threaded(&query_path, &index, index.k());
-                }
             }
-
         }
     } 
 }

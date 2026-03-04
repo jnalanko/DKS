@@ -4,40 +4,14 @@ use std::sync::atomic::Ordering::Relaxed;
 
 use crate::{color_storage::SimpleColorStorage, lca_tree::LcaTree, single_colored_kmers::{KmerLookupIterator, SingleColoredKmers}};
 
-#[derive(PartialEq, Eq, Debug, Copy, Clone)]
-pub enum ColorVecValue {
-    Single(usize),
-    Root,
-    None,
-} 
-
-impl ColorVecValue {
-    pub fn union(&self, other: ColorVecValue) -> ColorVecValue {
-        match (*self, other) {
-            (ColorVecValue::Single(a), ColorVecValue::Single(b)) => {
-                if a == b { ColorVecValue::Single(a) }
-                else { ColorVecValue::Root }    
-            },
-            (ColorVecValue::Single(_), ColorVecValue::Root) => ColorVecValue::Root,
-            (ColorVecValue::Single(a), ColorVecValue::None) => ColorVecValue::Single(a),
-            (ColorVecValue::Root, ColorVecValue::Single(_)) => ColorVecValue::Root,
-            (ColorVecValue::Root, ColorVecValue::Root) => ColorVecValue::Root,
-            (ColorVecValue::Root, ColorVecValue::None) => ColorVecValue::Root,
-            (ColorVecValue::None, ColorVecValue::Single(b)) => ColorVecValue::Single(b),
-            (ColorVecValue::None, ColorVecValue::Root) => ColorVecValue::Root,
-            (ColorVecValue::None, ColorVecValue::None) => ColorVecValue::None,
-        }
-    }
-}
-
 pub trait ColoredKmerLookupAlgorithm {
-    fn lookup_kmers(&self, query: &[u8], k: usize) -> impl Iterator<Item = ColorVecValue>;
+    fn lookup_kmers(&self, query: &[u8], k: usize) -> impl Iterator<Item = Option<usize>>;
 }
 
 pub trait ColorStorage {
-    fn get_color(&self, colex: usize) -> ColorVecValue;
-    fn set_color(&mut self, colex: usize, value: ColorVecValue);
-    fn get_color_of_range(&self, range: Range<usize>) -> ColorVecValue;
+    fn get_color(&self, colex: usize) -> Option<usize>;
+    fn set_color(&mut self, colex: usize, value: Option<usize>);
+    fn get_color_of_range(&self, range: Range<usize>, color_hierarchy: &LcaTree) -> Option<usize>;
 }
 
 pub trait MySerialize {
@@ -54,7 +28,7 @@ pub trait AtomicColorVec{
 
     fn new(len: usize) -> Self; // Stores a None (=max_value()) to each position
     fn update(&self, i: usize, x: usize, lca: &LcaTree);
-    fn read(&self, i: usize, root_id: usize) -> ColorVecValue;
+    fn read(&self, i: usize, root_id: usize) -> Option<usize>;
     fn none_sentinel() -> usize;        // the value used to represent "no color assigned"
 }
 
