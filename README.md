@@ -31,7 +31,7 @@ This file is at `example/file_of_files.txt`. The files are assigned to colors 0,
 To index this data with k = 5, using 8 threads and the directory `./temp` for temporary working space, run: 
 
 ```bash
-dks build -k 5 -i example/file_of_files.txt -o example/index.dks --external-memory ./temp -t 8
+dks build -k 5 -f example/file_of_files.txt -o example/index.dks --external-memory ./temp -t 8
 ```
 
 This will save the index to `example/index.dks`. Reverse complements of k-mers are automatically indexed and receive the same color as the forward k-mer. In a real use case, you might want to use something like k = 31. **Too slow?** Remove the option `--external-memory ./temp` to run entirely in RAM. See [benchmarks](#performance) for how this affects time and space on a human genome. See also [best practices](#best-practices) for more advice on how to maximize performance.
@@ -45,29 +45,29 @@ dks lookup -q example/query.fasta -i example/index.dks -t 8 > example/out.tsv
 This will write the following to `example/out.tsv`:
 
 ```
-seq_rank	from_kmer	to_kmer	color
-0	0	0	*
-0	1	2	0
-0	3	3	*
-0	4	4	1
-0	7	10	2
-0	11	11	*
-0	12	14	2
-1	0	0	*
-1	1	7	1
-1	12	13	0
-1	14	14	*
-1	19	21	2
+query_rank	from_kmer	to_kmer	color
+0	0	1	*
+0	1	3	0
+0	3	4	*
+0	4	5	1
+0	7	11	2
+0	11	12	*
+0	12	15	2
+1	0	1	*
+1	1	8	1
+1	12	14	0
+1	14	15	*
+1	19	22	2
 ```
 
 The four columns are:
 
 * `seq_rank`: Zero-based sequence rank in the input file
 * `from_kmer`: Zero-based starting position of the first k-mer of a k-mer range
-* `to_kmer`: Zero-based starting position of the last k-mer of a k-mer range (inclusive)
+* `to_kmer`: Zero-based starting position of the last k-mer of a k-mer range (exclusive)
 * `color`: Color of the k-mers in the range, or `*` if the k-mer has multiple colors
 
-So in our example, for the first query sequence (sequence 0), k-mers 0-0 have multiple colors, k-mers 1-2 have color 0, k-mers 3-3 have multiple colors, and so on.
+So in our example, for the first query sequence (sequence 0), k-mer 0 has multiple colors, k-mers 1-2 have color 0, k-mers 3 has multiple colors, and so on.
 
 ## Performance
 
