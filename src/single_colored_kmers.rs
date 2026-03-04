@@ -30,7 +30,6 @@ pub struct SingleColoredKmers<L: ContractLeft + Clone + MySerialize + From<LcsAr
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
     lcs: L,
     colors: C,
-    n_colors: usize,
     color_names: Vec<String>,
     color_hierarchy: LcaTree,
 }
@@ -231,8 +230,8 @@ impl ColoringBatch {
 
 impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmers<L, C> {
 
-    pub fn into_parts(self) -> (SbwtIndex<SubsetMatrix>, L, C, usize, Vec<String>, LcaTree) {
-        (self.sbwt, self.lcs, self.colors, self.n_colors, self.color_names, self.color_hierarchy)
+    pub fn into_parts(self) -> (SbwtIndex<SubsetMatrix>, L, C, Vec<String>, LcaTree) {
+        (self.sbwt, self.lcs, self.colors, self.color_names, self.color_hierarchy)
     }
 
     pub fn color_hierarchy(&self) -> &LcaTree {
@@ -254,7 +253,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
     // This is used to identify the version of the serialization format
     fn serialization_version_number() -> u32 {
-        4_u32
+        5_u32
     }
 
     pub fn serialize(&self, mut out: &mut impl Write) {
@@ -265,7 +264,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         self.lcs.serialize(out);
 
         self.colors.serialize(&mut out);
-        bincode::serialize_into(&mut out, &self.n_colors).unwrap();
+        self.color_hierarchy.serialize(&mut out).unwrap();
 
         for name in self.color_names.iter() {
             // Serialize length and bytes
@@ -273,8 +272,6 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             bincode::serialize_into(&mut out, &(name_bytes.len() as u64)).unwrap();
             out.write_all(name_bytes).unwrap();
         }
-
-        self.color_hierarchy.serialize(&mut out).unwrap();
     }
 
     pub fn load(mut input: &mut impl Read) -> SingleColoredKmers<L, C> {
@@ -296,24 +293,22 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         let lcs = *L::load(input);
 
         let colors = *C::load(&mut input);
-        let n_colors = bincode::deserialize_from(&mut input).unwrap();
+        let color_hierarchy = LcaTree::load(input).unwrap();
 
         let mut color_names = Vec::new();
-        for _ in 0..n_colors {
+        for _ in 0..color_hierarchy.n() {
             let name_len: u64 = bincode::deserialize_from(&mut input).unwrap();
             let mut name_bytes = vec![0_u8; name_len as usize];
             input.read_exact(&mut name_bytes).unwrap();
             color_names.push(String::from_utf8(name_bytes).unwrap());
         }
 
-        let color_hierarchy = LcaTree::load(input).unwrap();
 
-        SingleColoredKmers{sbwt, lcs, colors, n_colors, color_names, color_hierarchy}
+        SingleColoredKmers{sbwt, lcs, colors, color_names, color_hierarchy}
     }
 
-    #[allow(dead_code)]
-    pub fn n_colors(&self) -> usize {
-        self.n_colors
+    pub fn n_colors_in_hierarchy(&self) -> usize {
+        self.color_hierarchy.n()
     }
 
     pub fn n_kmers(&self) -> usize {
@@ -587,7 +582,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
         log::info!("Color structure construction complete");
         SingleColoredKmers::<L, C> {
-            sbwt, lcs: lcs_index, n_colors, colors: colors_index, color_names, color_hierarchy,
+            sbwt, lcs: lcs_index, colors: colors_index, color_names, color_hierarchy,
         }
     }
 

@@ -3,7 +3,7 @@ use std::io::{self, Read, Write};
 /// A rooted tree where leaves occupy IDs 0..num_leaves and internal nodes occupy
 /// IDs num_leaves..n. The root is an internal node (or node 0 for a single-node tree).
 /// `parent[root] == root` (root is its own parent).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct LcaTree {
     n: usize,
     root: usize,

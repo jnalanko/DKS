@@ -93,10 +93,10 @@ impl ColorIndex {
         }
     }
 
-    fn n_colors(&self) -> usize {
+    fn n_colors_in_hierarchy(&self) -> usize {
         match self {
-            ColorIndex::FixedK(index) => index.n_colors(),
-            ColorIndex::FlexibleK(index) => index.n_colors(),
+            ColorIndex::FixedK(index) => index.n_colors_in_hierarchy(),
+            ColorIndex::FlexibleK(index) => index.n_colors_in_hierarchy(),
         }
     }
 
@@ -116,7 +116,7 @@ impl ColorIndex {
 }
 
 fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
-    let (sbwt, lcs, coloring, _n_colors, color_names, color_hierarchy) = fixed_index.into_parts();
+    let (sbwt, lcs, coloring, color_names, color_hierarchy) = fixed_index.into_parts();
     FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring, color_names, Some(color_hierarchy))
 }
 
@@ -553,7 +553,7 @@ fn main() {
             let stats = index.color_stats();
             println!("Index type:            {}", if index.is_flexible() { "flexible-k" } else { "fixed-k" });
             println!("k:                     {}", index.k());
-            println!("Number of colors:      {}", index.n_colors());
+            println!("Number of colors in hierarchy:      {}", index.n_colors_in_hierarchy());
             println!("Number of k-mers:      {}", index.n_kmers());
             println!("Single-colored k-mers: {}", stats.single);
             println!("Multi-colored k-mers:  {}", stats.multiple);

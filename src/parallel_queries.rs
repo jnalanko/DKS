@@ -686,12 +686,10 @@ mod tests {
         let loaded = SingleColoredKmers::<LcsWrapper, WTColorStorage>::load(&mut buf.as_slice());
 
         // Check structural equality
-        assert_eq!(original.n_colors(), loaded.n_colors());
         assert_eq!(original.k(), loaded.k());
         assert_eq!(original.n_kmers(), loaded.n_kmers());
         assert_eq!(original.color_names(), loaded.color_names());
-        assert_eq!(original.color_hierarchy().root(), loaded.color_hierarchy().root());
-        assert_eq!(original.color_hierarchy().n(), loaded.color_hierarchy().n());
+        assert_eq!(original.color_hierarchy(), loaded.color_hierarchy());
 
         // Check every SBWT position has the same color
         for i in 0..original.n_kmers() {
