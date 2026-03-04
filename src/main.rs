@@ -11,6 +11,7 @@ use parallel_queries::OutputWriter;
 use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper}, traits::ColorVecValue, wavelet_tree::WaveletTreeWrapper};
 
 mod single_colored_kmers;
+mod lca_tree;
 mod io;
 mod parallel_queries;
 mod single_threaded_queries;
