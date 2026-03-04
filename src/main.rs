@@ -116,8 +116,8 @@ impl ColorIndex {
 }
 
 fn into_flexible_index(fixed_index: FixedKColorIndex) -> FlexibleKColorIndex {
-    let (sbwt, lcs, coloring, _n_colors, color_names) = fixed_index.into_parts();
-    FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring, color_names)
+    let (sbwt, lcs, coloring, _n_colors, color_names, color_hierarchy) = fixed_index.into_parts();
+    FlexibleKColorIndex::new_given_coloring(sbwt, lcs.inner, coloring, color_names, Some(color_hierarchy))
 }
 
 fn add_colors<T: sbwt::SeqStream + Send>(
@@ -131,7 +131,7 @@ fn add_colors<T: sbwt::SeqStream + Send>(
     nones_to_multiples: bool,
 ) {
     log::info!("Marking colors");
-    let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads);
+    let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads, None);
     if nones_to_multiples {
         log::info!("Turning Nones into Multiples");
         index.turn_nones_to_multiples();

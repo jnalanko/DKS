@@ -10,6 +10,7 @@ use crossbeam::channel::{Receiver, RecvTimeoutError};
 use jseqio::seq_db::SeqDB;
 use sbwt::{ContractLeft, LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStream, StreamingIndex, SubsetMatrix};
 use crate::color_storage::SimpleColorStorage;
+use crate::lca_tree::LcaTree;
 use crate::traits::*;
 
 pub struct ColorStats {
@@ -31,6 +32,7 @@ pub struct SingleColoredKmers<L: ContractLeft + Clone + MySerialize + From<LcsAr
     colors: C,
     n_colors: usize,
     color_names: Vec<String>,
+    color_hierarchy: LcaTree,
 }
 
 impl<L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize+ From<SimpleColorStorage>> ColoredKmerLookupAlgorithm for SingleColoredKmers<L, C> {
@@ -226,8 +228,12 @@ impl ColoringBatch {
 
 impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmers<L, C> {
 
-    pub fn into_parts(self) -> (SbwtIndex<SubsetMatrix>, L, C, usize, Vec<String>) {
-        (self.sbwt, self.lcs, self.colors, self.n_colors, self.color_names)
+    pub fn into_parts(self) -> (SbwtIndex<SubsetMatrix>, L, C, usize, Vec<String>, LcaTree) {
+        (self.sbwt, self.lcs, self.colors, self.n_colors, self.color_names, self.color_hierarchy)
+    }
+
+    pub fn color_hierarchy(&self) -> &LcaTree {
+        &self.color_hierarchy
     }
 
     pub fn color_names(&self) -> &[String] {
@@ -245,7 +251,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
     // This is used to identify the version of the serialization format
     fn serialization_version_number() -> u32 {
-        3_u32
+        4_u32
     }
 
     pub fn serialize(&self, mut out: &mut impl Write) {
@@ -264,6 +270,8 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             bincode::serialize_into(&mut out, &(name_bytes.len() as u64)).unwrap();
             out.write_all(name_bytes).unwrap();
         }
+
+        self.color_hierarchy.serialize(&mut out).unwrap();
     }
 
     pub fn load(mut input: &mut impl Read) -> SingleColoredKmers<L, C> {
@@ -295,7 +303,9 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             color_names.push(String::from_utf8(name_bytes).unwrap());
         }
 
-        SingleColoredKmers{sbwt, lcs, colors, n_colors, color_names}
+        let color_hierarchy = LcaTree::load(input).unwrap();
+
+        SingleColoredKmers{sbwt, lcs, colors, n_colors, color_names, color_hierarchy}
     }
 
     #[allow(dead_code)]
@@ -523,7 +533,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     }
 
 
-    pub fn new<T: SeqStream + Send>(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, input_streams: Vec<T>, color_names: Vec<String>, n_threads: usize) -> Self {
+    pub fn new<T: SeqStream + Send>(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, input_streams: Vec<T>, color_names: Vec<String>, n_threads: usize, color_hierarchy: Option<LcaTree>) -> Self {
         assert!(color_names.len() == input_streams.len());
         let n_colors = input_streams.len();
 
@@ -540,11 +550,18 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             SingleColoredKmers::<L,C>::mark_colors::<T, Vec::<AtomicU64>>(&sbwt, &lcs, input_streams, n_threads)
         };
 
-        Self::new_given_coloring(sbwt, lcs, color_storage, color_names)
+        Self::new_given_coloring(sbwt, lcs, color_storage, color_names, color_hierarchy)
     }
 
-    pub fn new_given_coloring(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, coloring: SimpleColorStorage, color_names: Vec<String>) -> Self {
+    pub fn new_given_coloring(sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: sbwt::LcsArray, coloring: SimpleColorStorage, mut color_names: Vec<String>, color_hierarchy: Option<LcaTree>) -> Self {
         let n_colors = coloring.n_colors();
+
+        let color_hierarchy = color_hierarchy.unwrap_or_else(|| {
+            color_names.push("root".to_string());
+            let n = color_names.len(); // n_colors + 1
+            let edges = (0..n - 1).map(|i| (i, n - 1)).collect();
+            LcaTree::new(n, edges).expect("default color hierarchy construction cannot fail")
+        });
 
         log::info!("Indexing LCS array");
         let lcs_index = L::from(lcs);
@@ -554,7 +571,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
         log::info!("Color structure construction complete");
         SingleColoredKmers::<L, C> {
-            sbwt, lcs: lcs_index, n_colors, colors: colors_index, color_names,
+            sbwt, lcs: lcs_index, n_colors, colors: colors_index, color_names, color_hierarchy,
         }
     }
 
