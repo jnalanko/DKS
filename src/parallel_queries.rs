@@ -650,4 +650,52 @@ mod tests {
         random_test_short_queries(5);
         random_test_short_queries(1000);
     }
+
+    #[test]
+    fn serialize_roundtrip() {
+        let k = 7_usize;
+        let sequences: Vec<Vec<u8>> = vec![
+            b"ACGTACGTACGT".to_vec(),
+            b"TTTTACGTGGGG".to_vec(),
+        ];
+
+        let (sbwt, lcs) = sbwt::SbwtIndexBuilder::new()
+            .add_rev_comp(false)
+            .k(k)
+            .build_lcs(true)
+            .n_threads(1)
+            .precalc_length(3)
+            .add_all_dummy_paths(true)
+            .algorithm(BitPackedKmerSortingMem::new().dedup_batches(false))
+            .run_from_vecs(&sequences);
+        let lcs = lcs.unwrap();
+
+        let color_names = vec!["seq0".to_string(), "seq1".to_string()];
+        let seqstreams: Vec<SingleSeqStream> = sequences.iter()
+            .map(|s| SingleSeqStream::new(s.clone()))
+            .collect();
+        let original = SingleColoredKmers::<LcsWrapper, WTColorStorage>::new(
+            sbwt, lcs, seqstreams, color_names, 1, None,
+        );
+
+        // Serialize
+        let mut buf = Vec::<u8>::new();
+        original.serialize(&mut buf);
+
+        // Deserialize
+        let loaded = SingleColoredKmers::<LcsWrapper, WTColorStorage>::load(&mut buf.as_slice());
+
+        // Check structural equality
+        assert_eq!(original.n_colors(), loaded.n_colors());
+        assert_eq!(original.k(), loaded.k());
+        assert_eq!(original.n_kmers(), loaded.n_kmers());
+        assert_eq!(original.color_names(), loaded.color_names());
+        assert_eq!(original.color_hierarchy().root(), loaded.color_hierarchy().root());
+        assert_eq!(original.color_hierarchy().n(), loaded.color_hierarchy().n());
+
+        // Check every SBWT position has the same color
+        for i in 0..original.n_kmers() {
+            assert_eq!(original.get_color(i), loaded.get_color(i), "color mismatch at position {i}");
+        }
+    }
 }
