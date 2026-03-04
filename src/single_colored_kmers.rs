@@ -67,17 +67,13 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             //eprintln!("Expanding from {}..{}, (len {})", new_start, new_end, new_end - new_start);
             while new_start > 0 && lcs.get_lcs(new_start) >= self.query_pattern_length {
                 new_start -= 1;
-                if let Some(new_color) = self.index.get_color(new_start) {
-                    color = Some(hierarchy.lca(color, new_color));
-                    if color == Some(root_id) { return Some(color) } // This is a Some(Some(color)). Means that the iterator produced something.
-                }
+                color = hierarchy.lca_options(color, self.index.get_color(new_start));
+                if color == Some(root_id) { return Some(color) } // This is a Some(Some(color)). Means that the iterator produced something.
             }
             let n = self.index.sbwt.n_sets();
             while new_end < n && lcs.get_lcs(new_end) >= self.query_pattern_length {
-                if let Some(new_color) = self.index.get_color(new_end) {
-                    color = Some(hierarchy.lca(color, new_color));
-                    if color == Some(root_id) { return Some(color) } // This is a Some(Some(color)). Means that the iterator produced something.
-                }
+                color = hierarchy.lca_options(color, self.index.get_color(new_end));
+                if color == Some(root_id) { return Some(color) } // This is a Some(Some(color)). Means that the iterator produced something.
                 new_end += 1;
             }
 
@@ -417,7 +413,6 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
     // Generic function that works on any of u8, 16, u32 and u64
     fn mark_colors<T: SeqStream + Send, A: AtomicColorVec + Send + Sync>(sbwt: &sbwt::SbwtIndex<sbwt::SubsetMatrix>, lcs: &sbwt::LcsArray, input_streams: Vec<T>, n_threads: usize, color_hierarchy: &LcaTree) -> SimpleColorStorage {
-        let root_id = color_hierarchy.root();
 
         let color_ids = A::new(sbwt.n_sets());
         let si = StreamingIndex::new(sbwt, lcs);

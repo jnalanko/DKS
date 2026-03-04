@@ -123,6 +123,14 @@ impl LcaTree {
         self.lca_table[a * self.n + b]
     }
 
+    /// Returns the lowest common ancestor of nodes `a` and `b`.
+    pub fn lca_options(&self, a: Option<usize>, b: Option<usize>) -> Option<usize> {
+        if a.is_none() { return b }
+        if b.is_none() { return a }
+        let (a,b) = (a.unwrap(), b.unwrap());
+        Some(self.lca(a,b))
+    }
+
     pub fn n(&self) -> usize {
         self.n
     }
