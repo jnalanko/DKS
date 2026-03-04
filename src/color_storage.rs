@@ -67,15 +67,7 @@ impl ColorStorage for SimpleColorStorage {
 
         let mut lca: Option<usize> = None;
         for colex in range {
-            match self.get_color(colex) {
-                None => (),
-                Some(x) => {
-                    match lca {
-                        None => lca = Some(x),
-                        Some(y) => lca = Some(color_hierarchy.lca(x,y))
-                    }
-                }
-            }
+            lca = color_hierarchy.lca_options(lca, self.get_color(colex));
             if lca == Some(color_hierarchy.root()) {
                 // Already at root -> can early exit here
                 return lca
