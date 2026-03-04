@@ -214,6 +214,7 @@ pub enum Subcommands {
         index: PathBuf,
     },
 
+    /* Outdated commmand. This was before the changes that introduced the color hierarchy
     #[command(arg_required_else_help = true, about = "Debug: build individual SBWTs per color and query them separately.")]
     IndividualSbwtDebug {
         #[arg(help = "A file with one fasta/fastq filename per line (one per color)", short, long, required = true, help_heading = "Input")]
@@ -231,6 +232,7 @@ pub enum Subcommands {
         #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
         n_threads: usize,
     },
+    */
 }
 
 struct DynamicFastXReaderWrapper {
@@ -276,6 +278,7 @@ fn read_color_names_file(path: &PathBuf) -> Vec<String> {
         .collect()
 }
 
+/* This code is outdated. It is before the changes that introduced the color hierarchy tree 
 fn individual_sbwt_debug(input_fof: &PathBuf, query_path: &PathBuf, k: usize, forward_only: bool, n_threads: usize) {
     // Read input file-of-files
     let input_paths: Vec<PathBuf> = BufReader::new(File::open(input_fof)
@@ -356,6 +359,7 @@ fn individual_sbwt_debug(input_fof: &PathBuf, query_path: &PathBuf, k: usize, fo
     }
     writer.flush();
 }
+*/
 
 fn main() {
 
@@ -525,10 +529,6 @@ fn main() {
             println!("Color run min length:  {}", stats.color_run_min);
             println!("Color run max length:  {}", stats.color_run_max);
             println!("Color run mean length: {:.2}", stats.color_run_mean);
-        },
-
-        Subcommands::IndividualSbwtDebug { input: input_fof, query: query_path, k, forward_only, n_threads } => {
-            individual_sbwt_debug(&input_fof, &query_path, k, forward_only, n_threads);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
