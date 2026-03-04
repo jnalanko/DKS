@@ -92,7 +92,7 @@ impl<T: AtomicUint> AtomicColorVec for Vec<T> {
     }
 
     fn update(&self, i: usize, x: usize, lca: &LcaTree) {
-        debug_assert!(x != Self::none_sentinel(), "x must not be the none sentinel");
+        assert!(x != Self::none_sentinel(), "x must not be the none sentinel");
         self[i].fetch_update(|cur| {
             if cur == Self::none_sentinel() {
                 x               // first assignment: replace none with color
