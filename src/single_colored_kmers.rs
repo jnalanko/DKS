@@ -58,7 +58,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             // k-mer is found in the sbwt
             assert!(range.len() > 0);
             let mut color = self.index.get_color_of_range(range.clone());
-            if color == ColorVecValue::Multiple { return Some(color) }
+            if color == ColorVecValue::Root { return Some(color) }
 
             // Expand the interval as long as it has at most single color and the
             // LCS is at least the query pattern length.
@@ -67,12 +67,12 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             while new_start > 0 && lcs.get_lcs(new_start) >= self.query_pattern_length {
                 new_start -= 1;
                 color = color.union(self.index.get_color(new_start));
-                if color == ColorVecValue::Multiple { return Some(ColorVecValue::Multiple) }
+                if color == ColorVecValue::Root { return Some(ColorVecValue::Root) }
             }
             let n = self.index.sbwt.n_sets();
             while new_end < n && lcs.get_lcs(new_end) >= self.query_pattern_length {
                 color = color.union(self.index.get_color(new_end));
-                if color == ColorVecValue::Multiple { return Some(ColorVecValue::Multiple) }
+                if color == ColorVecValue::Root { return Some(ColorVecValue::Root) }
                 new_end += 1;
             }
             //eprintln!("Expanded all the way to {}..{}, (len {})", new_start, new_end, new_end - new_start);
@@ -107,7 +107,7 @@ impl<T: AtomicUint> AtomicColorVec for Vec<T> {
         if x == Self::none_sentinel() {
             ColorVecValue::None
         } else if x == root_id {
-            ColorVecValue::Multiple
+            ColorVecValue::Root
         } else {
             ColorVecValue::Single(x)
         }
@@ -350,7 +350,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         for i in 0..self.sbwt.n_sets() {
             match self.get_color(i) {
                 ColorVecValue::Single(_) => single += 1,
-                ColorVecValue::Multiple => multiple += 1,
+                ColorVecValue::Root => multiple += 1,
                 ColorVecValue::None => uncolored += 1,
             }
         }
@@ -515,7 +515,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             let cv = color_ids.read(i, root_id);
             match cv {
                 ColorVecValue::Single(_) => total_single_count += 1,
-                ColorVecValue::Multiple => total_multiple_count += 1,
+                ColorVecValue::Root => total_multiple_count += 1,
                 ColorVecValue::None => {},
             }
             compressed_colors.set_color(i, cv);
@@ -589,7 +589,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     pub fn turn_nones_to_multiples(&mut self) {
         for i in 0..self.sbwt.n_sets() {
             if self.get_color(i) == ColorVecValue::None {
-                self.colors.set_color(i, ColorVecValue::Multiple);
+                self.colors.set_color(i, ColorVecValue::Root);
             }
         }
     }

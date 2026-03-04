@@ -7,7 +7,7 @@ use crate::{color_storage::SimpleColorStorage, lca_tree::LcaTree, single_colored
 #[derive(PartialEq, Eq, Debug, Copy, Clone)]
 pub enum ColorVecValue {
     Single(usize),
-    Multiple,
+    Root,
     None,
 } 
 
@@ -16,15 +16,15 @@ impl ColorVecValue {
         match (*self, other) {
             (ColorVecValue::Single(a), ColorVecValue::Single(b)) => {
                 if a == b { ColorVecValue::Single(a) }
-                else { ColorVecValue::Multiple }    
+                else { ColorVecValue::Root }    
             },
-            (ColorVecValue::Single(_), ColorVecValue::Multiple) => ColorVecValue::Multiple,
+            (ColorVecValue::Single(_), ColorVecValue::Root) => ColorVecValue::Root,
             (ColorVecValue::Single(a), ColorVecValue::None) => ColorVecValue::Single(a),
-            (ColorVecValue::Multiple, ColorVecValue::Single(_)) => ColorVecValue::Multiple,
-            (ColorVecValue::Multiple, ColorVecValue::Multiple) => ColorVecValue::Multiple,
-            (ColorVecValue::Multiple, ColorVecValue::None) => ColorVecValue::Multiple,
+            (ColorVecValue::Root, ColorVecValue::Single(_)) => ColorVecValue::Root,
+            (ColorVecValue::Root, ColorVecValue::Root) => ColorVecValue::Root,
+            (ColorVecValue::Root, ColorVecValue::None) => ColorVecValue::Root,
             (ColorVecValue::None, ColorVecValue::Single(b)) => ColorVecValue::Single(b),
-            (ColorVecValue::None, ColorVecValue::Multiple) => ColorVecValue::Multiple,
+            (ColorVecValue::None, ColorVecValue::Root) => ColorVecValue::Root,
             (ColorVecValue::None, ColorVecValue::None) => ColorVecValue::None,
         }
     }

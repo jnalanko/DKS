@@ -43,7 +43,7 @@ impl ColorStorage for SimpleColorStorage {
         if x == (1 << self.bits_per_color) - 1 { // Max value is reserved for None
             ColorVecValue::None
         } else if x == (1 << self.bits_per_color) - 2 { // Max - 1 is reserved for Multiple
-            ColorVecValue::Multiple
+            ColorVecValue::Root
         } else {
             ColorVecValue::Single(x)
         }
@@ -55,7 +55,7 @@ impl ColorStorage for SimpleColorStorage {
                 assert!(x < (1 << self.bits_per_color) - 2); 
                 x
             },
-            ColorVecValue::Multiple => (1 << self.bits_per_color) - 2,
+            ColorVecValue::Root => (1 << self.bits_per_color) - 2,
             ColorVecValue::None => (1 << self.bits_per_color) - 1,
         };
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(value);
@@ -73,13 +73,13 @@ impl ColorStorage for SimpleColorStorage {
                     match existing_color {
                         Some(e) => {
                             if c != e {
-                                return ColorVecValue::Multiple;
+                                return ColorVecValue::Root;
                             }    
                         },
                         None => existing_color = Some(c),
                     }
                 },
-                ColorVecValue::Multiple => return ColorVecValue::Multiple,
+                ColorVecValue::Root => return ColorVecValue::Root,
                 ColorVecValue::None => (),
             }
         }
@@ -99,7 +99,7 @@ impl SimpleColorStorage {
                 assert!(x < (1 << self.bits_per_color) - 2); 
                 x
             },
-            ColorVecValue::Multiple => (1 << self.bits_per_color) - 2,
+            ColorVecValue::Root => (1 << self.bits_per_color) - 2,
             ColorVecValue::None => (1 << self.bits_per_color) - 1,
         };
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(value);
@@ -144,7 +144,7 @@ impl WTColorStorage {
         if x == none_id { 
             ColorVecValue::None
         } else if x == multiple_id { 
-            ColorVecValue::Multiple
+            ColorVecValue::Root
         } else {
             ColorVecValue::Single(x)
         }
@@ -167,7 +167,7 @@ impl WTColorStorage {
             (Some(x), None) => {
                 let x = x as usize;
                 if x == none_id { ColorVecValue::None }
-                else if x == multiple_id { ColorVecValue::Multiple }
+                else if x == multiple_id { ColorVecValue::Root }
                 else { ColorVecValue::Single(x) }
             },
             (Some(x), Some(y)) => {
@@ -176,7 +176,7 @@ impl WTColorStorage {
                 if y == none_id && x != multiple_id {
                     ColorVecValue::Single(x)
                 } else {
-                    ColorVecValue::Multiple
+                    ColorVecValue::Root
                 }
             },
         }

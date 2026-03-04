@@ -70,7 +70,7 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
                 Some(names) => write!(self.out, "{}", &names[c]).unwrap(),
                 None => write!(self.out, "{c}").unwrap(),
             },
-            ColorVecValue::Multiple => write!(self.out, "{}", if self.color_names.is_some() { "multiple" } else { "*" }).unwrap(),
+            ColorVecValue::Root => write!(self.out, "{}", if self.color_names.is_some() { "multiple" } else { "*" }).unwrap(),
             ColorVecValue::None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
         }
         writeln!(self.out).unwrap();
