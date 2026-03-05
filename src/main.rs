@@ -160,6 +160,17 @@ fn read_hierarchy_file(path: &PathBuf, leaf_names: &[String]) -> (crate::lca_tre
     (tree, internal_names)
 }
 
+fn build_hierarchy(hierarchy_path: &Option<PathBuf>, leaf_names: Vec<String>) -> ColorHierarchy {
+    if let Some(path) = hierarchy_path {
+        let (tree, internal_names) = read_hierarchy_file(path, &leaf_names);
+        let mut all_names = leaf_names;
+        all_names.extend(internal_names);
+        ColorHierarchy::with_tree(tree, all_names)
+    } else {
+        ColorHierarchy::new_star(leaf_names)
+    }
+}
+
 fn add_colors<T: sbwt::SeqStream + Send>(
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
     lcs: LcsArray,
@@ -519,14 +530,7 @@ fn main() {
                 } else {
                     input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect()
                 };
-                let hierarchy = if let Some(path) = &hierarchy_path {
-                    let (tree, internal_names) = read_hierarchy_file(path, &color_names);
-                    let mut all_names = color_names;
-                    all_names.extend(internal_names);
-                    ColorHierarchy::with_tree(tree, all_names)
-                } else {
-                    ColorHierarchy::new_star(color_names)
-                };
+                let hierarchy = build_hierarchy(&hierarchy_path, color_names);
                 let individual_streams: Vec<LazyFileSeqStream> = input_paths.iter()
                     .map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps))
                     .collect();
@@ -549,14 +553,7 @@ fn main() {
                 };
 
                 let n_colors = color_names.len();
-                let hierarchy = if let Some(path) = &hierarchy_path {
-                    let (tree, internal_names) = read_hierarchy_file(path, &color_names);
-                    let mut all_names = color_names;
-                    all_names.extend(internal_names);
-                    ColorHierarchy::with_tree(tree, all_names)
-                } else {
-                    ColorHierarchy::new_star(color_names)
-                };
+                let hierarchy = build_hierarchy(&hierarchy_path, color_names);
 
                 let shared_reader = Arc::new(Mutex::new(
                     DynamicFastXReader::from_file(&sc)
