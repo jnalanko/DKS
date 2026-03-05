@@ -587,14 +587,14 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     }
 }
 
-struct SingleColoredKmersShort<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
+pub struct SingleColoredKmersShort<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
     inner: SingleColoredKmers<L,C>, // k-mers sharing an s-mer have been made to have the same color: the LCA in the color hierarchy
 }
 
 impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmersShort<L,C> {
 
     // s is the query length. s <= k
-    fn new(mut inner: SingleColoredKmers<L, C>, s: usize) -> Self {
+    pub fn new(mut inner: SingleColoredKmers<L, C>, s: usize) -> Self {
         assert!(s <= inner.sbwt.k());
         for colex in 1..inner.sbwt.k() {
             if inner.lcs.get_lcs(colex) >= s {

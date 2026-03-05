@@ -8,7 +8,7 @@ use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
 use single_colored_kmers::SingleColoredKmers;
 use parallel_queries::OutputWriter;
 
-use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper}};
+use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper, SingleColoredKmersShort}};
 
 mod single_colored_kmers;
 mod lca_tree;
@@ -267,10 +267,14 @@ fn load_seq_names(query_path: &PathBuf) -> Vec<String> {
 
 fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index: ColorIndex, batch_size: usize, k: usize, writer: W) {
     let reader = DynamicFastXReaderWrapper { inner: reader };
-    match index {
-        ColorIndex::FixedK(index) => {
-            parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
-        },
+    let ColorIndex::FixedK(index) = index;
+    if k < index.k() {
+        log::info!("Preprocessing colors for {}-mer queries", k);
+        let s_index = SingleColoredKmersShort::new(index, k);
+        log::info!("Running {}-mer queries", k);
+        parallel_queries::lookup_parallel(n_threads, reader, &s_index, batch_size, k, writer);
+    } else {
+        parallel_queries::lookup_parallel(n_threads, reader, &index, batch_size, k, writer);
     }
 }
 
