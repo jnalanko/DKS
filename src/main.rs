@@ -103,6 +103,10 @@ impl ColorIndex {
     }
 }
 
+fn read_hierarchy_file(_path: &PathBuf) -> crate::lca_tree::LcaTree {
+    unimplemented!("Reading a color hierarchy from a file is not yet implemented");
+}
+
 fn add_colors<T: sbwt::SeqStream + Send>(
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
     lcs: LcsArray,
@@ -110,10 +114,11 @@ fn add_colors<T: sbwt::SeqStream + Send>(
     color_names: Vec<String>,
     n_threads: usize,
     out_path: PathBuf,
+    hierarchy: Option<crate::lca_tree::LcaTree>,
     nones_to_multiples: bool,
 ) {
     log::info!("Marking colors");
-    let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads, None);
+    let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads, hierarchy);
     if nones_to_multiples {
         log::info!("Turning Nones into roots");
         index.turn_nones_to_roots();
@@ -172,6 +177,9 @@ pub enum Subcommands {
 
         #[arg(help = "Optional: a file with one color name per line, in the same order as the input files. Defaults to using the input filenames as color names.", long = "color-names", help_heading = "Input")]
         color_names_file: Option<PathBuf>,
+
+        #[arg(help = "Optional: a file describing the color hierarchy tree. Defaults to a star (all colors as children of a single root).", long = "hierarchy", help_heading = "Input")]
+        hierarchy: Option<PathBuf>,
 
         #[arg(help = "Hidden option: After building, turn all \"none\" colors into \"multiple\"", long = "none-to-multiple", default_value = "false", hide = true)]
         none_to_multiple: bool,
@@ -383,7 +391,7 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, color_names_file, none_to_multiple} => {
+        Subcommands::Build { file_colors, sequence_colors, unitigs: unitigs_path, output: out_path, temp_dir, k, n_threads, forward_only, sbwt_path, lcs_path, color_names_file, hierarchy: hierarchy_path, none_to_multiple} => {
             // Create output directory if does not exist
             std::fs::create_dir_all(out_path.parent().unwrap()).unwrap();
 
@@ -446,6 +454,8 @@ fn main() {
                 (sbwt, lcs)
             };
 
+            let hierarchy = hierarchy_path.as_ref().map(read_hierarchy_file);
+
             if let Some(fc) = file_colors {
                 let input_paths: Vec<PathBuf> = BufReader::new(File::open(&fc)
                     .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", fc.display())))
@@ -462,7 +472,7 @@ fn main() {
                 let individual_streams: Vec<LazyFileSeqStream> = input_paths.iter()
                     .map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps))
                     .collect();
-                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, none_to_multiple);
+                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, hierarchy, none_to_multiple);
             } else {
                 let sc = sequence_colors.unwrap();
 
@@ -490,7 +500,7 @@ fn main() {
                     .map(|_| io::SingleSeqStream::new(Arc::clone(&shared_reader), add_rev_comps))
                     .collect();
 
-                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, none_to_multiple);
+                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, hierarchy, none_to_multiple);
             }
 
         },
