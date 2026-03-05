@@ -608,10 +608,15 @@ fn main() {
             println!("Number of k-mers:      {}", index.n_kmers());
             println!("Colored SBWT positions: {}", stats.colored);
             println!("Uncolored SBWT positions:  {}", stats.uncolored);
-            println!("Uncolored k-mers:      {}", stats.uncolored);
             println!("Color run min length:  {}", stats.color_run_min);
             println!("Color run max length:  {}", stats.color_run_max);
             println!("Color run mean length: {:.2}", stats.color_run_mean);
+            println!();
+            println!("{:<10}  {}", "Count", "Color name");
+            println!("{:<10}  {}", stats.uncolored, "none");
+            for (id, name) in index.color_names().iter().enumerate() {
+                println!("{:<10}  {}", stats.color_counts[id], name);
+            }
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {

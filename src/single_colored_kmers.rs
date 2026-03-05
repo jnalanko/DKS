@@ -91,6 +91,8 @@ pub struct ColorStats {
     pub color_run_min: usize,
     pub color_run_max: usize,
     pub color_run_mean: f64,
+    /// Count of SBWT positions assigned to each color node (indexed by color ID).
+    pub color_counts: Vec<usize>,
 }
 
 // This bit vector of length 256 marks the ascii values of these characters: acgtACGT
@@ -399,14 +401,15 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     pub fn color_stats(&self) -> ColorStats {
         let mut uncolored = 0_usize;
         let mut colored = 0_usize;
+        let mut color_counts = vec![0_usize; self.hierarchy.n_nodes()];
         for i in 0..self.sbwt.n_sets() {
             match self.get_color(i) {
-                Some(_) => colored += 1,
+                Some(id) => { colored += 1; color_counts[id] += 1; },
                 None => uncolored += 1,
             }
         }
         let (color_run_min, color_run_max, color_run_mean) = self.color_run_stats();
-        ColorStats { colored, uncolored, color_run_min, color_run_max, color_run_mean }
+        ColorStats { colored, uncolored, color_run_min, color_run_max, color_run_mean, color_counts }
     }
 
     pub fn get_color(&self, colex: usize) -> Option<usize> {
