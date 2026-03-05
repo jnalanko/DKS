@@ -5,7 +5,7 @@ use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
 use jseqio::{reader::DynamicFastXReader, record::Record};
 use sbwt::{BitPackedKmerSortingDisk, BitPackedKmerSortingMem, LcsArray};
-use single_colored_kmers::SingleColoredKmers;
+use single_colored_kmers::{ColorHierarchy, SingleColoredKmers};
 use parallel_queries::OutputWriter;
 
 use crate::{color_storage::SimpleColorStorage, parallel_queries::RunWriter, single_colored_kmers::{ColorStats, LcsWrapper, SingleColoredKmersShort}};
@@ -103,7 +103,8 @@ impl ColorIndex {
     }
 }
 
-fn read_hierarchy_file(path: &PathBuf, leaf_names: &[String]) -> crate::lca_tree::LcaTree {
+// Returns the LcaTree and the internal node names (in node-ID order, after all leaf IDs).
+fn read_hierarchy_file(path: &PathBuf, leaf_names: &[String]) -> (crate::lca_tree::LcaTree, Vec<String>) {
     use std::io::BufRead;
 
     let mut name_to_id = HashMap::<&str, usize>::new();
@@ -154,22 +155,22 @@ fn read_hierarchy_file(path: &PathBuf, leaf_names: &[String]) -> crate::lca_tree
     }
 
     let n = leaf_count + n_internal;
-    crate::lca_tree::LcaTree::new(n, edges)
-        .unwrap_or_else(|e| panic!("Invalid hierarchy file {}: {e}", path.display()))
+    let tree = crate::lca_tree::LcaTree::new(n, edges)
+        .unwrap_or_else(|e| panic!("Invalid hierarchy file {}: {e}", path.display()));
+    (tree, internal_names)
 }
 
 fn add_colors<T: sbwt::SeqStream + Send>(
     sbwt: sbwt::SbwtIndex<sbwt::SubsetMatrix>,
     lcs: LcsArray,
     individual_streams: Vec<T>,
-    color_names: Vec<String>,
     n_threads: usize,
     out_path: PathBuf,
-    hierarchy: Option<crate::lca_tree::LcaTree>,
+    hierarchy: ColorHierarchy,
     nones_to_multiples: bool,
 ) {
     log::info!("Marking colors");
-    let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, color_names, n_threads, hierarchy);
+    let mut index = FixedKColorIndex::new(sbwt, lcs, individual_streams, n_threads, hierarchy);
     if nones_to_multiples {
         log::info!("Turning Nones into roots");
         index.turn_nones_to_roots();
@@ -518,11 +519,18 @@ fn main() {
                 } else {
                     input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect()
                 };
-                let hierarchy = hierarchy_path.as_ref().map(|p| read_hierarchy_file(p, &color_names));
+                let hierarchy = if let Some(path) = &hierarchy_path {
+                    let (tree, internal_names) = read_hierarchy_file(path, &color_names);
+                    let mut all_names = color_names;
+                    all_names.extend(internal_names);
+                    ColorHierarchy::with_tree(tree, all_names)
+                } else {
+                    ColorHierarchy::new_star(color_names)
+                };
                 let individual_streams: Vec<LazyFileSeqStream> = input_paths.iter()
                     .map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps))
                     .collect();
-                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, hierarchy, none_to_multiple);
+                add_colors(sbwt, lcs, individual_streams, n_threads, out_path, hierarchy, none_to_multiple);
             } else {
                 let sc = sequence_colors.unwrap();
 
@@ -541,7 +549,14 @@ fn main() {
                 };
 
                 let n_colors = color_names.len();
-                let hierarchy = hierarchy_path.as_ref().map(|p| read_hierarchy_file(p, &color_names));
+                let hierarchy = if let Some(path) = &hierarchy_path {
+                    let (tree, internal_names) = read_hierarchy_file(path, &color_names);
+                    let mut all_names = color_names;
+                    all_names.extend(internal_names);
+                    ColorHierarchy::with_tree(tree, all_names)
+                } else {
+                    ColorHierarchy::new_star(color_names)
+                };
 
                 let shared_reader = Arc::new(Mutex::new(
                     DynamicFastXReader::from_file(&sc)
@@ -551,7 +566,7 @@ fn main() {
                     .map(|_| io::SingleSeqStream::new(Arc::clone(&shared_reader), add_rev_comps))
                     .collect();
 
-                add_colors(sbwt, lcs, individual_streams, color_names, n_threads, out_path, hierarchy, none_to_multiple);
+                add_colors(sbwt, lcs, individual_streams, n_threads, out_path, hierarchy, none_to_multiple);
             }
 
         },

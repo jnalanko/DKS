@@ -1,6 +1,6 @@
 use std::{cmp::{max, Reverse}, io::Write, ops::Range};
 use jseqio::seq_db::SeqDB;
-use crate::{color_storage::SimpleColorStorage, single_colored_kmers::SingleColoredKmers};
+use crate::{color_storage::SimpleColorStorage, single_colored_kmers::{ColorHierarchy, SingleColoredKmers}};
 use crate::traits::*;
 
 pub trait RunWriter: Send {
@@ -354,7 +354,7 @@ mod tests {
     use rand_chacha::rand_core::{RngCore, SeedableRng};
     use sbwt::{BitPackedKmerSortingMem, SeqStream};
 
-    use crate::{color_storage::SimpleColorStorage, parallel_queries::{OutputWriter, lookup_parallel}, single_colored_kmers::{LcsWrapper, SingleColoredKmers}};
+    use crate::{color_storage::SimpleColorStorage, parallel_queries::{OutputWriter, lookup_parallel}, single_colored_kmers::{ColorHierarchy, LcsWrapper, SingleColoredKmers}};
 
     struct SingleSeqStream {
         seq: Vec<u8>,
@@ -464,7 +464,7 @@ mod tests {
         let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
         eprintln!("Building SingleColoredKmers...");
         let color_names: Vec<String> = (0..sequences.len()).map(|i| format!("{}", i)).collect();
-        let sck = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
+        let sck = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(sbwt, lcs, seqstreams, 3, ColorHierarchy::new_star(color_names));
         eprintln!("SingleColoredKmers built");
 
         // Generate 1000 random queries of lengths between 1 and 100
@@ -591,7 +591,7 @@ mod tests {
         let seqstreams: Vec<SingleSeqStream> = sequences.iter().map(|s| SingleSeqStream::new(s.clone())).collect();
         eprintln!("Building SingleColoredKmers...");
         let color_names: Vec<String> = (0..sequences.len()).map(|i| format!("{}", i)).collect();
-        let sck = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(sbwt, lcs, seqstreams, color_names, 3, None);
+        let sck = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(sbwt, lcs, seqstreams, 3, ColorHierarchy::new_star(color_names));
         eprintln!("SingleColoredKmers built");
 
         // Generate random queries of lengths between 1 and 50
@@ -676,7 +676,7 @@ mod tests {
             .map(|s| SingleSeqStream::new(s.clone()))
             .collect();
         let original = SingleColoredKmers::<LcsWrapper, SimpleColorStorage>::new(
-            sbwt, lcs, seqstreams, color_names, 1, None,
+            sbwt, lcs, seqstreams, 1, ColorHierarchy::new_star(color_names),
         );
 
         // Serialize
