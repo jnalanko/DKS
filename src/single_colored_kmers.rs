@@ -293,7 +293,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         let color_hierarchy = LcaTree::load(input).unwrap();
 
         let mut color_names = Vec::new();
-        for _ in 0..color_hierarchy.n() {
+        for _ in 0..color_hierarchy.n_nodes() {
             let name_len: u64 = bincode::deserialize_from(&mut input).unwrap();
             let mut name_bytes = vec![0_u8; name_len as usize];
             input.read_exact(&mut name_bytes).unwrap();
@@ -305,7 +305,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     }
 
     pub fn n_colors_in_hierarchy(&self) -> usize {
-        self.color_hierarchy.n()
+        self.color_hierarchy.n_nodes()
     }
 
     pub fn n_kmers(&self) -> usize {
@@ -536,7 +536,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             LcaTree::new(n, edges).expect("default hierarchy cannot fail")
         });
 
-        let required_bit_width = SimpleColorStorage::required_bit_width(color_hierarchy.n() + 1); // +1 for the "none"
+        let required_bit_width = SimpleColorStorage::required_bit_width(color_hierarchy.n_nodes() + 1); // +1 for the "none"
 
         log::info!("Marking colors");
         let color_storage = if required_bit_width <= 8 {

@@ -131,7 +131,7 @@ impl LcaTree {
         Some(self.lca(a,b))
     }
 
-    pub fn n(&self) -> usize {
+    pub fn n_nodes(&self) -> usize {
         self.n
     }
 
@@ -292,7 +292,7 @@ mod tests {
         t.serialize(&mut buf).unwrap();
         let t2 = LcaTree::load(&mut buf.as_slice()).unwrap();
 
-        assert_eq!(t2.n(), 7);
+        assert_eq!(t2.n_nodes(), 7);
         assert_eq!(t2.root(), t.root());
         for i in 0..7 {
             for j in 0..7 {
@@ -309,7 +309,7 @@ mod tests {
         t.serialize(&mut buf).unwrap();
         let t2 = LcaTree::load(&mut buf.as_slice()).unwrap();
 
-        assert_eq!(t2.n(), 10);
+        assert_eq!(t2.n_nodes(), 10);
         assert_eq!(t2.root(), t.root());
         for i in 0..10 {
             for j in 0..10 {
