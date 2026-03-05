@@ -103,32 +103,59 @@ impl ColorIndex {
     }
 }
 
-fn read_hierarchy_file(path: &PathBuf, color_names: &[String]) -> crate::lca_tree::LcaTree {
+fn read_hierarchy_file(path: &PathBuf, leaf_names: &[String]) -> crate::lca_tree::LcaTree {
     use std::io::BufRead;
 
     let mut name_to_id = HashMap::<&str, usize>::new();
-    for (id, name) in color_names.iter().enumerate() {
+    for (id, name) in leaf_names.iter().enumerate() {
         name_to_id.insert(name, id);
     }
 
-    let mut edges = Vec::<(usize, usize)>::new();
-    // Parse all edge lines as (child_name, parent_name)
     let file = File::open(path)
         .unwrap_or_else(|e| panic!("Could not open hierarchy file {}: {e}", path.display()));
-    for (i, line) in BufReader::new(file).lines().enumerate() {
-        let line = line.unwrap();
-        let mut parts = line.split_whitespace();
-        let child_name = parts.next()
-            .unwrap_or_else(|| panic!("Missing child name on line {} of {}", i + 1, path.display()))
-            .to_string();
-        let parent_name = parts.next()
-            .unwrap_or_else(|| panic!("Missing parent name on line {} of {}", i + 1, path.display()))
-            .to_string();
-        edges.push((name_to_id[child_name.as_str()], name_to_id[parent_name.as_str()]));
+    let mut lines = BufReader::new(file).lines();
+
+    // First line: n_internal_nodes n_edges
+    let first_line = lines.next()
+        .unwrap_or_else(|| panic!("Hierarchy file {} is empty", path.display()))
+        .unwrap();
+    let mut parts = first_line.split_whitespace();
+    let n_internal: usize = parts.next().unwrap().parse().unwrap();
+    let n_edges: usize = parts.next().unwrap().parse().unwrap();
+
+    // Read internal node names and assign IDs starting after leaf IDs
+    let leaf_count = leaf_names.len();
+    let mut internal_names = Vec::with_capacity(n_internal);
+    for i in 0..n_internal {
+        let name = lines.next()
+            .unwrap_or_else(|| panic!("Hierarchy file: expected internal node name on line {}", i + 2))
+            .unwrap();
+        internal_names.push(name);
+    }
+    // Insert with stable string references from internal_names
+    for (i, name) in internal_names.iter().enumerate() {
+        name_to_id.insert(name.as_str(), leaf_count + i);
     }
 
-    crate::lca_tree::LcaTree::new(color_names.len(), edges)
-        .unwrap_or_else(|e| panic!("Invalid hierarchy in {}: {e}", path.display()))
+    // Read edges
+    let mut edges = Vec::with_capacity(n_edges);
+    for i in 0..n_edges {
+        let line = lines.next()
+            .unwrap_or_else(|| panic!("Hierarchy file: expected edge on line {}", leaf_count + i + 2))
+            .unwrap();
+        let mut parts = line.split_whitespace();
+        let child_name = parts.next().unwrap_or_else(|| panic!("Hierarchy file: missing child name in edge {i}"));
+        let parent_name = parts.next().unwrap_or_else(|| panic!("Hierarchy file: missing parent name in edge {i}"));
+        let child_id = *name_to_id.get(child_name)
+            .unwrap_or_else(|| panic!("Hierarchy file: unknown node name '{child_name}'"));
+        let parent_id = *name_to_id.get(parent_name)
+            .unwrap_or_else(|| panic!("Hierarchy file: unknown node name '{parent_name}'"));
+        edges.push((child_id, parent_id));
+    }
+
+    let n = leaf_count + n_internal;
+    crate::lca_tree::LcaTree::new(n, edges)
+        .unwrap_or_else(|e| panic!("Invalid hierarchy file {}: {e}", path.display()))
 }
 
 fn add_colors<T: sbwt::SeqStream + Send>(
