@@ -587,6 +587,77 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     }
 }
 
+struct SingleColoredKmersShort<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
+    inner: SingleColoredKmers<L,C>, // k-mers sharing an s-mer have been made to have the same color: the LCA in the color hierarchy
+}
+
+impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmersShort<L,C> {
+
+    // s is the query length. s <= k
+    fn new(mut inner: SingleColoredKmers<L, C>, s: usize) -> Self {
+        assert!(s <= inner.sbwt.k());
+        for colex in 1..inner.sbwt.k() {
+            if inner.lcs.get_lcs(colex) >= s {
+                let prev_color = inner.colors.get_color(colex-1);
+                let now_color = inner.colors.get_color(colex);
+                let updated = inner.color_hierarchy.lca_options(prev_color, now_color);
+                inner.colors.set_color(colex, updated);
+            }
+        }
+        Self { inner }
+    }
+}
+
+impl<L: sbwt::ContractLeft + Clone + MySerialize + From<sbwt::LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize+ From<SimpleColorStorage>> ColoredKmerLookupAlgorithm for SingleColoredKmersShort<L, C> {
+    fn lookup_kmers(&self, query: &[u8], s: usize) -> impl Iterator<Item = Option<usize>> {
+        assert!(s <= self.inner.sbwt.k());
+        let si = StreamingIndex {
+            extend_right: &self.inner.sbwt, 
+            contract_left: &self.inner.lcs,
+            n: self.inner.sbwt.n_sets(),
+            k: self.inner.sbwt.k(),
+        };
+
+        //let mut ms_iter = si.bounded_matching_statistics_iter(query, k);
+        let mut ms_iter = si.matching_statistics_iter(query);
+
+        // Skip over the first s-1 positions
+        for _ in 0..s-1 {
+            ms_iter.next(); // If the iterator ends early, will keep returning None
+        }
+        KmerLookupIteratorShort { matching_stats_iter: ms_iter, index: self, query_pattern_length: s}
+    }
+}
+
+pub struct KmerLookupIteratorShort<'a, 'b, L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
+    // This iterator should be initialized so that the first k-1 MS values are skipped
+    matching_stats_iter: MatchingStatisticsIterator<'a, 'b, SbwtIndex::<SubsetMatrix>, L>,
+    index: &'a SingleColoredKmersShort<L, C>,
+    query_pattern_length: usize,
+}
+
+impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> Iterator for KmerLookupIteratorShort<'_, '_, L, C> {
+    type Item = Option<usize>; // Color id of k-mer
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (len, range) = self.matching_stats_iter.next()?;
+
+        if len >= self.query_pattern_length {
+            // s-mer is found in the sbwt
+            assert!(range.len() > 0);
+
+            // Because we have preprocessed to color array, all positions in the colex
+            // range of an s-mer have the same color. So we can pick any of those. Let's
+            // pick the first one.
+            let color = self.index.inner.get_color(range.start);
+
+            Some(color) // This is a Some(Some(color)). Means that the iterator produced something.
+        } else {
+            Some(None) // Iterator not finished but the k-mer is not found -> no color
+        }
+    }
+}
+
 // Wrapper so that we can implement the foreing trait RandomAccessU32
 #[derive(Debug, Clone)]
 pub struct LcsWrapper {
