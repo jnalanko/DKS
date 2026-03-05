@@ -1,6 +1,6 @@
 #![allow(non_snake_case, clippy::needless_range_loop, clippy::len_zero)] // Using upper-case variable names from the source material
 
-use std::{fs::File, io::{BufRead, BufReader, BufWriter, Read, Write}, path::PathBuf, sync::{Arc, Mutex}};
+use std::{collections::HashMap, fs::File, io::{BufRead, BufReader, BufWriter, Read, Write}, path::PathBuf, sync::{Arc, Mutex}};
 use clap::{Parser, Subcommand};
 use io::LazyFileSeqStream;
 use jseqio::{reader::DynamicFastXReader, record::Record};
@@ -103,8 +103,32 @@ impl ColorIndex {
     }
 }
 
-fn read_hierarchy_file(_path: &PathBuf) -> crate::lca_tree::LcaTree {
-    unimplemented!("Reading a color hierarchy from a file is not yet implemented");
+fn read_hierarchy_file(path: &PathBuf, color_names: &[String]) -> crate::lca_tree::LcaTree {
+    use std::io::BufRead;
+
+    let mut name_to_id = HashMap::<&str, usize>::new();
+    for (id, name) in color_names.iter().enumerate() {
+        name_to_id.insert(name, id);
+    }
+
+    let mut edges = Vec::<(usize, usize)>::new();
+    // Parse all edge lines as (child_name, parent_name)
+    let file = File::open(path)
+        .unwrap_or_else(|e| panic!("Could not open hierarchy file {}: {e}", path.display()));
+    for (i, line) in BufReader::new(file).lines().enumerate() {
+        let line = line.unwrap();
+        let mut parts = line.split_whitespace();
+        let child_name = parts.next()
+            .unwrap_or_else(|| panic!("Missing child name on line {} of {}", i + 1, path.display()))
+            .to_string();
+        let parent_name = parts.next()
+            .unwrap_or_else(|| panic!("Missing parent name on line {} of {}", i + 1, path.display()))
+            .to_string();
+        edges.push((name_to_id[child_name.as_str()], name_to_id[parent_name.as_str()]));
+    }
+
+    crate::lca_tree::LcaTree::new(color_names.len(), edges)
+        .unwrap_or_else(|e| panic!("Invalid hierarchy in {}: {e}", path.display()))
 }
 
 fn add_colors<T: sbwt::SeqStream + Send>(
@@ -454,8 +478,6 @@ fn main() {
                 (sbwt, lcs)
             };
 
-            let hierarchy = hierarchy_path.as_ref().map(read_hierarchy_file);
-
             if let Some(fc) = file_colors {
                 let input_paths: Vec<PathBuf> = BufReader::new(File::open(&fc)
                     .unwrap_or_else(|e| panic!("Could not open input file {}: {e}", fc.display())))
@@ -469,6 +491,7 @@ fn main() {
                 } else {
                     input_paths.iter().map(|p| p.as_os_str().to_str().unwrap().to_owned()).collect()
                 };
+                let hierarchy = hierarchy_path.as_ref().map(|p| read_hierarchy_file(p, &color_names));
                 let individual_streams: Vec<LazyFileSeqStream> = input_paths.iter()
                     .map(|p| LazyFileSeqStream::new(p.clone(), add_rev_comps))
                     .collect();
@@ -491,6 +514,7 @@ fn main() {
                 };
 
                 let n_colors = color_names.len();
+                let hierarchy = hierarchy_path.as_ref().map(|p| read_hierarchy_file(p, &color_names));
 
                 let shared_reader = Arc::new(Mutex::new(
                     DynamicFastXReader::from_file(&sc)
