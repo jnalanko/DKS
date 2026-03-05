@@ -596,7 +596,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     // s is the query length. s <= k
     pub fn new(mut inner: SingleColoredKmers<L, C>, s: usize) -> Self {
         assert!(s <= inner.sbwt.k());
-        for colex in 1..inner.sbwt.k() {
+        for colex in 1..inner.sbwt.n_sets() {
             if inner.lcs.get_lcs(colex) >= s {
                 let prev_color = inner.colors.get_color(colex-1);
                 let now_color = inner.colors.get_color(colex);
