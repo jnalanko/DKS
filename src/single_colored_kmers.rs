@@ -12,6 +12,7 @@ use sbwt::{ContractLeft, LcsArray, MatchingStatisticsIterator, SbwtIndex, SeqStr
 use crate::color_storage::SimpleColorStorage;
 use crate::lca_tree::LcaTree;
 use crate::traits::*;
+use crate::util::for_each_run_with_key;
 
 pub struct ColorStats {
     pub colored: usize,
@@ -596,15 +597,27 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     // s is the query length. s <= k
     pub fn new(mut inner: SingleColoredKmers<L, C>, s: usize) -> Self {
         assert!(s <= inner.sbwt.k());
-        for colex in 1..inner.sbwt.n_sets() {
-            if inner.lcs.get_lcs(colex) >= s {
-                let prev_color = inner.colors.get_color(colex-1);
-                let now_color = inner.colors.get_color(colex);
-                let updated = inner.color_hierarchy.lca_options(prev_color, now_color);
-                inner.colors.set_color(colex-1, updated);
-                inner.colors.set_color(colex, updated);
+        let n = inner.sbwt.n_sets();
+
+        // Sweep through every maximal run of positions whose consecutive LCS >= s
+        // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all
+        // colors in the run and write it back to every position in the run.
+        let mut run_start = 0usize;
+        for colex in 1..=n {
+            let run_continues = colex < n && inner.lcs.get_lcs(colex) >= s;
+            if !run_continues {
+                // Run is run_start..colex
+                let mut merged: Option<usize> = None;
+                for pos in run_start..colex {
+                    merged = inner.color_hierarchy.lca_options(merged, inner.colors.get_color(pos));
+                }
+                for pos in run_start..colex {
+                    inner.colors.set_color(pos, merged);
+                }
+                run_start = colex;
             }
         }
+
         Self { inner }
     }
 }
