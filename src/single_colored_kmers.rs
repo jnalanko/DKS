@@ -601,6 +601,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                 let prev_color = inner.colors.get_color(colex-1);
                 let now_color = inner.colors.get_color(colex);
                 let updated = inner.color_hierarchy.lca_options(prev_color, now_color);
+                inner.colors.set_color(colex-1, updated);
                 inner.colors.set_color(colex, updated);
             }
         }
