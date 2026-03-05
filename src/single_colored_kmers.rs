@@ -607,12 +607,14 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             let run_continues = colex < n && inner.lcs.get_lcs(colex) >= s;
             if !run_continues {
                 // Run is run_start..colex
-                let mut merged: Option<usize> = None;
-                for pos in run_start..colex {
-                    merged = inner.color_hierarchy.lca_options(merged, inner.colors.get_color(pos));
-                }
-                for pos in run_start..colex {
-                    inner.colors.set_color(pos, merged);
+                if colex - run_start > 1 { // Avoid wasted work: only need to do LCA for runs longer than 1
+                    let mut merged: Option<usize> = None;
+                    for pos in run_start..colex {
+                        merged = inner.color_hierarchy.lca_options(merged, inner.colors.get_color(pos));
+                    }
+                    for pos in run_start..colex {
+                        inner.colors.set_color(pos, merged);
+                    }
                 }
                 run_start = colex;
             }
