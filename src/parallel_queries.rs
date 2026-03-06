@@ -68,7 +68,6 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
         write!(self.out, "\t{from}\t{to}\t").unwrap();
         match run_color {
             None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
-            Some(c) if c == self.root_id => write!(self.out, "{}", if self.color_names.is_some() { "root" } else { "*" }).unwrap(),
             Some(c) => match &self.color_names {
                 Some(names) => write!(self.out, "{}", &names[c]).unwrap(),
                 None => write!(self.out, "{c}").unwrap(),
