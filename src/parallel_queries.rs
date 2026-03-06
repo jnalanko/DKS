@@ -31,8 +31,8 @@ impl<W: Write> OutputWriter<W> {
                 if name == "none" {
                     eprintln!("Error: can not use \"none\" as a color name because it is a reserved name");
                 }
-                if name == "multiple" {
-                    eprintln!("Error: can not use \"multiple\" as a color name because it is a reserved name");
+                if name == "root" {
+                    eprintln!("Error: can not use \"root\" as a color name because it is a reserved name");
                 }
             }
         }
@@ -68,7 +68,7 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
         write!(self.out, "\t{from}\t{to}\t").unwrap();
         match run_color {
             None => write!(self.out, "{}", if self.color_names.is_some() { "none" } else { "-" }).unwrap(),
-            Some(c) if c == self.root_id => write!(self.out, "{}", if self.color_names.is_some() { "multiple" } else { "*" }).unwrap(),
+            Some(c) if c == self.root_id => write!(self.out, "{}", if self.color_names.is_some() { "root" } else { "*" }).unwrap(),
             Some(c) => match &self.color_names {
                 Some(names) => write!(self.out, "{}", &names[c]).unwrap(),
                 None => write!(self.out, "{c}").unwrap(),
@@ -403,8 +403,8 @@ mod tests {
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     enum Color {
-        Single(usize),
-        Multiple,
+        NonRoot(usize),
+        Root,
     }
 
     fn random_test(batch_size: usize) {
@@ -433,14 +433,14 @@ mod tests {
                 if seq.len() >= k {
                     let kmer = &seq[seq.len()-k..];
                     if let Some(old) = kmer_to_color.get(kmer) {
-                        if let Color::Single(old_color) = old {
+                        if let Color::NonRoot(old_color) = old {
                             if *old_color != color {
-                                kmer_to_color.insert(kmer.to_vec(), Color::Multiple);
+                                kmer_to_color.insert(kmer.to_vec(), Color::Root);
                             } // Else the color matches the old color -> keep as is
                         } // Else we have multiple colors -> keep as is
                     } else {
                         // Nothing stored yet -> store single color
-                        kmer_to_color.insert(kmer.to_vec(), Color::Single(color));
+                        kmer_to_color.insert(kmer.to_vec(), Color::NonRoot(color));
                     }
                 }
             }
@@ -509,9 +509,9 @@ mod tests {
                 let end: usize = fields.next().unwrap().parse().unwrap();
                 let color_token = fields.next().unwrap();
                 let color = if color_token == "*" {
-                    Color::Multiple
+                    Color::Root
                 } else {
-                    Color::Single(color_token.parse::<usize>().unwrap())
+                    Color::NonRoot(color_token.parse::<usize>().unwrap())
                 };
                 for i in start..end {
                     found_kmers[seq_id].push((i, color));
@@ -566,9 +566,9 @@ mod tests {
         for (color, seq) in sequences.iter().enumerate() {
             for short_kmer in seq.windows(query_k) {
                 match short_kmer_to_color.get(short_kmer) {
-                    None => { short_kmer_to_color.insert(short_kmer.to_vec(), Color::Single(color)); }
-                    Some(Color::Single(old)) if *old != color => {
-                        short_kmer_to_color.insert(short_kmer.to_vec(), Color::Multiple);
+                    None => { short_kmer_to_color.insert(short_kmer.to_vec(), Color::NonRoot(color)); }
+                    Some(Color::NonRoot(old)) if *old != color => {
+                        short_kmer_to_color.insert(short_kmer.to_vec(), Color::Root);
                     }
                     _ => {}
                 }
@@ -624,9 +624,9 @@ mod tests {
                 let end: usize = fields.next().unwrap().parse().unwrap();
                 let color_token = fields.next().unwrap();
                 let color = if color_token == "*" {
-                    Color::Multiple
+                    Color::Root
                 } else {
-                    Color::Single(color_token.parse::<usize>().unwrap())
+                    Color::NonRoot(color_token.parse::<usize>().unwrap())
                 };
                 for i in start..end {
                     found_kmers[seq_id].push((i, color));
