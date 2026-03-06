@@ -507,11 +507,8 @@ mod tests {
                 let start: usize = fields.next().unwrap().parse().unwrap();
                 let end: usize = fields.next().unwrap().parse().unwrap();
                 let color_token = fields.next().unwrap();
-                let color = if color_token == "*" {
-                    Color::Root
-                } else {
-                    Color::NonRoot(color_token.parse::<usize>().unwrap())
-                };
+                let c = color_token.parse::<usize>().unwrap();
+                let color = if c == sck.color_hierarchy().root() { Color::Root } else { Color::NonRoot(c) };
                 for i in start..end {
                     found_kmers[seq_id].push((i, color));
                 }
@@ -622,11 +619,8 @@ mod tests {
                 let start: usize = fields.next().unwrap().parse().unwrap();
                 let end: usize = fields.next().unwrap().parse().unwrap();
                 let color_token = fields.next().unwrap();
-                let color = if color_token == "*" {
-                    Color::Root
-                } else {
-                    Color::NonRoot(color_token.parse::<usize>().unwrap())
-                };
+                let c = color_token.parse::<usize>().unwrap();
+                let color = if c == sck.color_hierarchy().root() { Color::Root } else { Color::NonRoot(c) };
                 for i in start..end {
                     found_kmers[seq_id].push((i, color));
                 }
