@@ -28,7 +28,7 @@ def parse_time_output(lines):
                 elapsed_seconds = hours * 60*60 + mins * 60 + secs
             else: # m:ss
                 mins = int(s.split(":")[0])
-                secs = float(s.split(":")[0])
+                secs = float(s.split(":")[1])
                 elapsed_seconds = mins * 60 + secs
 
         # Match max RSS (in kilobytes)
