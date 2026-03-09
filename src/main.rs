@@ -282,6 +282,12 @@ pub enum Subcommands {
         index: PathBuf,
     },
 
+    #[command(about = "Print how the number of s-mers for each node in the hierarchy, for all 1 <= s <= k")]
+    NodeStats {
+        #[arg(help = "Path to the index file", long, required = true)]
+        index: PathBuf,
+    },
+
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
     LookupDebug {
         #[arg(help = "A fasta/fastq query file", short, long, required = true)]
@@ -628,6 +634,13 @@ fn main() {
             for (id, name) in index.color_names().iter().enumerate() {
                 println!("{:<10}  {}", stats.color_counts[id], name);
             }
+        },
+
+        Subcommands::NodeStats { index: index_path } => {
+            let mut index_input = BufReader::new(File::open(&index_path)
+                .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
+            let index = ColorIndex::load(&mut index_input);
+            compute_node_stats(index);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
