@@ -286,6 +286,12 @@ pub enum Subcommands {
     NodeStats {
         #[arg(help = "Path to the index file", long, required = true)]
         index: PathBuf,
+
+        #[arg(help = "Print color names instead of color ids", long = "report-color-names")]
+        report_color_names: bool,
+
+        #[arg(help = "Number of parallel threads", short = 't', long = "n-threads", default_value = "4")]
+        n_threads: usize,
     },
 
     #[command(arg_required_else_help = true, about = "Simple reference implementation for debugging this program.")]
@@ -355,16 +361,35 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     }
 }
 
-fn compute_node_stats(index: ColorIndex) {
-    let ColorIndex::FixedK(mut index) = index;
-    println!("s\tcolor\tcount");
-    for s in (1..=index.k()).rev() {
-        log::info!("Computing node stats for s = {}", s);
-        let counts = index.node_stats(s);
-        for color in 0..counts.len() {
-            println!("{}\t{}\t{}", s, color, counts[color]);
-        }
-    }
+fn compute_node_stats(index: ColorIndex, report_color_names: bool, n_threads: usize) {
+    use rayon::prelude::*;
+
+    let color_names: Option<Vec<String>> = report_color_names.then(|| index.color_names().to_vec());
+    let ColorIndex::FixedK(index) = index;
+    let k = index.k();
+
+    let stdout_mutex = std::sync::Mutex::new(std::io::BufWriter::new(std::io::stdout()));
+    writeln!(stdout_mutex.lock().unwrap(), "s\tcolor\tcount").unwrap();
+
+    let thread_pool = rayon::ThreadPoolBuilder::new().num_threads(n_threads).build().unwrap();
+    thread_pool.install(|| {
+        let k_values: Vec<usize> = (1..=k).rev().collect(); // Need to collect because par_iter does not take rev()
+        k_values.into_par_iter().for_each(|s| {
+            log::info!("Computing node stats for s = {}", s);
+            let counts = index.node_stats(s);
+            let mut out = String::new();
+            for color in 0..counts.len() {
+                let color_label = if let Some(ref names) = color_names {
+                    names[color].clone()
+                } else {
+                    color.to_string()
+                };
+                out.push_str(&format!("{}\t{}\t{}\n", s, color_label, counts[color]));
+            }
+            let mut stdout = stdout_mutex.lock().unwrap();
+            stdout.write_all(out.as_bytes()).unwrap();
+        });
+    });
 }
 
 // Reads a color names file with one name per line.
@@ -636,11 +661,11 @@ fn main() {
             }
         },
 
-        Subcommands::NodeStats { index: index_path } => {
+        Subcommands::NodeStats { index: index_path, report_color_names, n_threads } => {
             let mut index_input = BufReader::new(File::open(&index_path)
                 .unwrap_or_else(|e| panic!("Could not open index file {}: {e}", index_path.display())));
             let index = ColorIndex::load(&mut index_input);
-            compute_node_stats(index);
+            compute_node_stats(index, report_color_names, n_threads);
         },
 
         Subcommands::LookupDebug{query: query_path, index: index_path} => {
