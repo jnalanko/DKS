@@ -349,6 +349,17 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     }
 }
 
+fn compute_node_stats(index: ColorIndex) {
+    let ColorIndex::FixedK(mut index) = index;
+    println!("s\tcolor\tcount");
+    for s in (1..=index.k()).rev() {
+        log::info!("Computing node stats for s = {}", s);
+        let counts = index.node_stats(s);
+        for color in 0..counts.len() {
+            println!("{}\t{}\t{}", s, color, counts[color]);
+        }
+    }
+}
 
 // Reads a color names file with one name per line.
 fn read_color_names_file(path: &PathBuf) -> Vec<String> {

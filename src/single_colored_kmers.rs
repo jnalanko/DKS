@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::ops::Range;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
@@ -619,6 +620,41 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             }
         }
     }
+
+    pub fn n_sbwt_sets(&self) -> usize {
+        self.sbwt.n_sets()
+    }
+
+    // S is the s-mer length, s <= k
+    // Returns a vector of length equal to the number of colors
+    // The i-th element in the vector is the number of s-mer assigned
+    // to color i.
+    pub fn node_stats(&self, s: usize) -> Vec<usize> {
+        let mut counts = vec![0; self.n_colors_in_hierarchy()];
+        assert!(s <= self.sbwt.k());
+        let n = self.n_sbwt_sets();
+
+        // Sweep through every maximal run of positions whose consecutive LCS >= s
+        // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all
+        // colors in the run.
+        let mut run_start = 0usize;
+        for colex in 1..=n {
+            let run_continues = colex < n && self.lcs.get_lcs(colex) >= s;
+            if !run_continues {
+                // Run is run_start..colex
+                let mut lca: Option<usize> = None;
+                for pos in run_start..colex {
+                    lca = self.hierarchy.tree().lca_options(lca, self.colors.get_color(pos));
+                }
+                if let Some(x) = lca {
+                    counts[x] += 1;
+                }
+                run_start = colex;
+            }
+        }
+
+        counts
+    }
 }
 
 pub struct SingleColoredKmersShort<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> {
@@ -654,6 +690,14 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         }
 
         Self { inner }
+    }
+
+    pub fn into_inner(self) -> SingleColoredKmers<L, C> {
+        self.inner
+    }
+
+    pub fn inner(&self) -> &SingleColoredKmers<L, C> {
+        &self.inner
     }
 }
 
