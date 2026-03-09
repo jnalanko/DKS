@@ -369,7 +369,7 @@ fn compute_node_stats(index: ColorIndex, report_color_names: bool, n_threads: us
     let k = index.k();
 
     let stdout_mutex = std::sync::Mutex::new(std::io::BufWriter::new(std::io::stdout()));
-    writeln!(stdout_mutex.lock().unwrap(), "s\tcolor\tcount").unwrap();
+    { let mut h = stdout_mutex.lock().unwrap(); writeln!(h, "s\tcolor\tcount").unwrap(); h.flush().unwrap(); }
 
     let thread_pool = rayon::ThreadPoolBuilder::new().num_threads(n_threads).build().unwrap();
     thread_pool.install(|| {
@@ -388,6 +388,7 @@ fn compute_node_stats(index: ColorIndex, report_color_names: bool, n_threads: us
             }
             let mut stdout = stdout_mutex.lock().unwrap();
             stdout.write_all(out.as_bytes()).unwrap();
+            stdout.flush().unwrap();
         });
     });
 }
