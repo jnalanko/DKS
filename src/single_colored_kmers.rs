@@ -125,9 +125,6 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
 
     fn next(&mut self) -> Option<Self::Item> {
         let (len, range) = self.matching_stats_iter.next()?;
-        let lcs = &self.index.lcs;
-        let hierarchy = self.index.color_hierarchy();  // &LcaTree
-        let root_id = hierarchy.root();
 
         if len >= self.query_pattern_length {
             // k-mer is found in the sbwt
@@ -137,6 +134,11 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                 // No interval expansion or LCA needed, just return the color. Saves some work.
                 return Some(self.index.get_color(range.start))
             }
+
+            let lcs = &self.index.lcs;
+            let hierarchy = self.index.color_hierarchy();  // &LcaTree
+            let root_id = hierarchy.root();
+
             let mut color = self.index.get_color_of_range(range.clone());
             if color == Some(root_id) { return Some(color) }
 
