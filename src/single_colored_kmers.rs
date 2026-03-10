@@ -628,11 +628,15 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     pub fn n_sbwt_sets(&self) -> usize {
         self.sbwt.n_sets()
     }
+    
+    pub fn build_sbwt_select(&mut self) {
+        self.sbwt.build_select();
+    }
 
     // S is the s-mer length, s <= k
     // Returns a vector of length equal to the number of colors
     // The i-th element in the vector is the number of s-mer assigned
-    // to color i.
+    // to color i. NOTE: build_sbwt_select() must have been called before running this.
     pub fn node_stats(&self, s: usize, dummy_marks: &BitSlice) -> Vec<usize> {
         let mut counts = vec![0; self.n_colors_in_hierarchy()];
         assert!(s <= self.sbwt.k());
@@ -647,8 +651,16 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
             if !run_continues {
                 // Run is run_start..colex
                 let mut lca: Option<usize> = None;
-                for pos in run_start..colex {
-                    if !dummy_marks[pos] {
+                if colex - run_start == 1 && dummy_marks[colex] {
+                    // We must only count this if the dummy has length at least s.
+                    let dummy_len = self.sbwt.access_kmer(run_start).iter().filter(|c| **c == b'$').count();
+                    if dummy_len <= s {
+                        lca = self.hierarchy.tree().lca_options(lca, self.colors.get_color(run_start));
+                    }
+                } else {
+                    // Since the length of the range is at least 2, all s-mers in the range
+                    // are dollar-free: otherwise we would have a duplicate dummy.
+                    for pos in run_start..colex {
                         lca = self.hierarchy.tree().lca_options(lca, self.colors.get_color(pos));
                     }
                 }

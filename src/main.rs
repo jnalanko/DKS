@@ -365,11 +365,13 @@ fn compute_node_stats(index: ColorIndex, report_color_names: bool, n_threads: us
     use rayon::prelude::*;
 
     let color_names: Option<Vec<String>> = report_color_names.then(|| index.color_names().to_vec());
-    let ColorIndex::FixedK(index) = index;
+    let ColorIndex::FixedK(mut index) = index;
     let k = index.k();
 
     log::info!("Preprocessing: marking dummy nodes");
     let dummy_marks = index.sbwt().compute_dummy_node_marks();
+    log::info!("Preprocessing: Building SBWT select support");
+    index.build_sbwt_select();
 
     let stdout_mutex = std::sync::Mutex::new(std::io::BufWriter::new(std::io::stdout()));
     { let mut h = stdout_mutex.lock().unwrap(); writeln!(h, "s\tcolor\tcount").unwrap(); h.flush().unwrap(); }
