@@ -56,7 +56,7 @@ impl<W: Write + Send> RunWriter for OutputWriter<W> {
 
     fn write_run(&mut self, seq_id: isize, run_color: Option<usize>, range: Range<usize>) {
         if range.is_empty() { return; }
-        if matches!(run_color, None) && !self.report_misses { return; }
+        if run_color.is_none() && !self.report_misses { return; }
 
         let from = range.start;
         let to = range.end;
