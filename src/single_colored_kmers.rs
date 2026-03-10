@@ -653,7 +653,7 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                 let mut lca: Option<usize> = None;
                 if run_end - run_start == 1 && dummy_marks[run_start] {
                     // We must only count this if the dummy has length at least s.
-                    let dummy_len = self.sbwt.access_kmer(run_start).iter().filter(|c| **c == b'$').count();
+                    let dummy_len = self.sbwt.access_kmer(run_start).iter().filter(|c| **c != b'$').count();
                     if dummy_len >= s {
                         lca = self.hierarchy.tree().lca_options(lca, self.colors.get_color(run_start));
                     }
