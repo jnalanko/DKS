@@ -646,12 +646,12 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
         // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all
         // colors in the run.
         let mut run_start = 0usize;
-        for colex in 1..=n {
-            let run_continues = colex < n && self.lcs.get_lcs(colex) >= s;
+        for run_end in 1..=n {
+            let run_continues = run_end < n && self.lcs.get_lcs(run_end) >= s;
             if !run_continues {
                 // Run is run_start..colex
                 let mut lca: Option<usize> = None;
-                if colex - run_start == 1 && dummy_marks[colex] {
+                if run_end - run_start == 1 && dummy_marks[run_start] {
                     // We must only count this if the dummy has length at least s.
                     let dummy_len = self.sbwt.access_kmer(run_start).iter().filter(|c| **c == b'$').count();
                     if dummy_len <= s {
@@ -660,14 +660,14 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
                 } else {
                     // Since the length of the range is at least 2, all s-mers in the range
                     // are dollar-free: otherwise we would have a duplicate dummy.
-                    for pos in run_start..colex {
+                    for pos in run_start..run_end {
                         lca = self.hierarchy.tree().lca_options(lca, self.colors.get_color(pos));
                     }
                 }
                 if let Some(x) = lca {
                     counts[x] += 1;
                 }
-                run_start = colex;
+                run_start = run_end;
             }
         }
 
