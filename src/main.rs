@@ -368,6 +368,9 @@ fn compute_node_stats(index: ColorIndex, report_color_names: bool, n_threads: us
     let ColorIndex::FixedK(index) = index;
     let k = index.k();
 
+    log::info!("Preprocessing: marking dummy nodes");
+    let dummy_marks = index.sbwt().compute_dummy_node_marks();
+
     let stdout_mutex = std::sync::Mutex::new(std::io::BufWriter::new(std::io::stdout()));
     { let mut h = stdout_mutex.lock().unwrap(); writeln!(h, "s\tcolor\tcount").unwrap(); h.flush().unwrap(); }
 
@@ -376,7 +379,7 @@ fn compute_node_stats(index: ColorIndex, report_color_names: bool, n_threads: us
         let k_values: Vec<usize> = (1..=k).rev().collect(); // Need to collect because par_iter does not take rev()
         k_values.into_par_iter().for_each(|s| {
             log::info!("Computing node stats for s = {}", s);
-            let counts = index.node_stats(s);
+            let counts = index.node_stats(s, &dummy_marks);
             let mut out = String::new();
             for color in 0..counts.len() {
                 let color_label = if let Some(ref names) = color_names {
