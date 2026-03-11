@@ -164,30 +164,20 @@ impl SimpleColorStorage {
         // The parallel phase wrote partial LCAs on each side; since LCA is associative
         // we can re-read those values, find the full run extent, and merge.
         let bv = BitSlice::from_slice_mut(self.colors.as_raw_mut_slice());
-        let mut b = 1;
-        while b < word_ranges.len() {
-            let boundary = word_ranges[b].start * 64 / self.bits_per_color;
-            if boundary >= n || lcs.get_lcs(boundary) < s {
-                b += 1;
-                continue;
-            }
+        for word_range in word_ranges {
+            let start_element = word_range.start * 64 / self.bits_per_color;
 
             // Find full extent of the cross-boundary run
-            let mut run_start = boundary - 1;
+            let mut run_start = start_element;
             while run_start > 0 && lcs.get_lcs(run_start) >= s {
                 run_start -= 1;
             }
-            let mut run_end = boundary;
+            let mut run_end = start_element + 1;
             while run_end < n && lcs.get_lcs(run_end) >= s {
                 run_end += 1;
             }
 
             fill_lca_range(bv, self.bits_per_color, 0, run_start..run_end);
-
-            // Skip over all boundaries that fall inside this run
-            while b < word_ranges.len() && word_ranges[b].start * 64 / self.bits_per_color < run_end {
-                b += 1;
-            }
         }
 
     }
