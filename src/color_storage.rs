@@ -110,13 +110,13 @@ impl SimpleColorStorage {
     pub fn substite_lca_for_s_mer_ranges<L: LcsAccess + Send + Sync>(&mut self, s: usize, hierarchy: &LcaTree, lcs: &L, n_threads: usize) {
         let n = self.len(); // Number of elements
         let n_bits = n * self.bits_per_color;
-        let total_words = n_bits.next_multiple_of(64);
+        let total_words = n_bits.next_multiple_of(64) / 64;
         let block_size_bits = n_bits.div_ceil(n_threads).next_multiple_of(64*self.bits_per_color);
         let block_size_words = block_size_bits / 64;
 
         let mut word_ranges = Vec::<Range<usize>>::new();
         for b in 0..n_threads {
-            let start = b * block_size_words;
+            let start = (b * block_size_words).min(total_words);
             let end = ((b+1) * block_size_words).min(total_words);
             word_ranges.push(start..end);
         }
@@ -139,9 +139,10 @@ impl SimpleColorStorage {
 
         color_slices.iter_mut().enumerate().par_bridge().for_each(|(slice_idx, slice)| {
             let bv = bitvec::slice::BitSlice::from_slice_mut(slice);
-            let n_elements = bv.len() / self.bits_per_color;
-
             let start_element_colex = word_ranges[slice_idx].start * 64 / self.bits_per_color;
+            // The last block may be padded to a full word, and empty blocks (when n_threads > n_words)
+            // have start_element_colex >= n, so cap with saturating subtraction.
+            let n_elements = (bv.len() / self.bits_per_color).min(n.saturating_sub(start_element_colex));
 
             // Sweep through every maximal run of positions whose consecutive LCS >= s
             // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all

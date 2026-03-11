@@ -776,6 +776,52 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: Colo
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::color_storage::SimpleColorStorage;
+
+    #[test]
+    fn test_parallel_substitute_lca_agrees_with_sequential() {
+        let k = 4_usize;
+        let s = 3_usize;
+
+        // Two colors, two sequences
+        let seqs: &[&[u8]] = &[b"ACGTACGT", b"TGCATGCA"];
+        let (sbwt, lcs) = sbwt::SbwtIndexBuilder::<sbwt::BitPackedKmerSortingMem>::new()
+            .k(k)
+            .build_lcs(true)
+            .run(sbwt::SliceSeqStream::new(seqs));
+        let lcs = lcs.unwrap();
+
+        let hierarchy = ColorHierarchy::new_star(vec!["a".to_string(), "b".to_string()]);
+
+        let streams: Vec<sbwt::SliceSeqStream> = vec![
+            sbwt::SliceSeqStream::new(&seqs[..1]),
+            sbwt::SliceSeqStream::new(&seqs[1..]),
+        ];
+
+        let index: SingleColoredKmers<LcsWrapper, SimpleColorStorage> =
+            SingleColoredKmers::new(sbwt, lcs, streams, 1, hierarchy);
+
+        // Sequential: SingleColoredKmersShort::new runs the reference algorithm
+        let sequential = SingleColoredKmersShort::new(index.clone(), s);
+
+        // Parallel: run substite_lca_for_s_mer_ranges on a fresh copy's color storage
+        let (sbwt2, lcs2, mut colors2, hierarchy2) = index.into_parts();
+        let lcs_wrapper = LcsWrapper::from(lcs2);
+        colors2.substite_lca_for_s_mer_ranges(s, hierarchy2.tree(), &lcs_wrapper, 4);
+
+        let n = sbwt2.n_sets();
+        for i in 0..n {
+            assert_eq!(
+                sequential.inner().get_color(i), colors2.get_color(i),
+                "mismatch at colex {i}"
+            );
+        }
+    }
+}
+
 // Wrapper so that we can implement the foreing trait RandomAccessU32
 #[derive(Debug, Clone)]
 pub struct LcsWrapper {
