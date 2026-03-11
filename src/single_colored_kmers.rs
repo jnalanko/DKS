@@ -691,7 +691,6 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess + Sync +
     // s is the query length. s <= k
     pub fn new(mut inner: SingleColoredKmers<L, C>, s: usize, n_threads: usize) -> Self {
         assert!(s <= inner.sbwt.k());
-        let n = inner.sbwt.n_sets();
         inner.colors.substite_lca_for_s_mer_ranges(s, inner.hierarchy.tree(), &inner.lcs, n_threads);
         Self { inner }
     }
