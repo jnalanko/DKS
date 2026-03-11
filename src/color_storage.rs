@@ -41,25 +41,13 @@ impl MySerialize for SimpleColorStorage {
 }
 
 impl ColorStorage for SimpleColorStorage {
+
     fn get_color(&self, colex: usize) -> Option<usize> {
-        let x: usize = self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].load_le();
-        if x == (1 << self.bits_per_color) - 1 { // Max value is reserved for None
-            None
-        } else {
-            Some(x)
-        }
+        Self::get_color_from_slice(&self.colors, self.bits_per_color, colex)
     }
 
     fn set_color(&mut self, colex: usize, value: Option<usize>) {
-        let x = match value {
-            None => (1 << self.bits_per_color) - 1,
-            Some(x) => {
-                assert!(x < (1 << self.bits_per_color) - 1);
-                x
-            }
-        };
-
-        self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(x);
+        Self::set_color_in_slice(&mut self.colors, self.bits_per_color, colex, value);
     }
 
     fn get_color_of_range(&self, range: Range<usize>, color_hierarchy: &LcaTree) -> Option<usize> {
@@ -81,15 +69,25 @@ impl ColorStorage for SimpleColorStorage {
 
 impl SimpleColorStorage {
 
-    pub fn set_color(&mut self, colex: usize, color: Option<usize>) {
-        let value = match color {
-            None => (1 << self.bits_per_color) - 1, // Max value is reserved for None
+    fn get_color_from_slice(slice: &BitSlice<u64, Lsb0>, bits_per_color: usize, colex: usize) -> Option<usize> {
+        let x: usize = slice[colex*bits_per_color .. (colex+1)*bits_per_color].load_le();
+        if x == (1 << bits_per_color) - 1 { // Max value is reserved for None
+            None
+        } else {
+            Some(x)
+        }
+    }
+
+    fn set_color_in_slice(slice: &mut BitSlice<u64, Lsb0>, bits_per_color: usize, colex: usize, value: Option<usize>) {
+        let x = match value {
+            None => (1 << bits_per_color) - 1,
             Some(x) => {
-                assert!(x < (1 << self.bits_per_color) - 1);
+                assert!(x < (1 << bits_per_color) - 1);
                 x
             }
         };
-        self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(value);
+
+        slice[colex*bits_per_color .. (colex+1)*bits_per_color].store_le(x);
     }
 
     pub fn new(len: usize, n_colors: usize) -> Self {
