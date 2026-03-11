@@ -65,49 +65,8 @@ impl ColorStorage for SimpleColorStorage {
         }
         lca
     }
-}
 
-impl SimpleColorStorage {
-
-    fn get_color_from_slice(slice: &BitSlice<u64, Lsb0>, bits_per_color: usize, colex: usize) -> Option<usize> {
-        let x: usize = slice[colex*bits_per_color .. (colex+1)*bits_per_color].load_le();
-        if x == (1 << bits_per_color) - 1 { // Max value is reserved for None
-            None
-        } else {
-            Some(x)
-        }
-    }
-
-    fn set_color_in_slice(slice: &mut BitSlice<u64, Lsb0>, bits_per_color: usize, colex: usize, value: Option<usize>) {
-        let x = match value {
-            None => (1 << bits_per_color) - 1,
-            Some(x) => {
-                assert!(x < (1 << bits_per_color) - 1);
-                x
-            }
-        };
-
-        slice[colex*bits_per_color .. (colex+1)*bits_per_color].store_le(x);
-    }
-
-    pub fn new(len: usize, n_colors: usize) -> Self {
-        let bits_per_color = Self::required_bit_width(n_colors);
-        SimpleColorStorage {
-            n_colors,
-            colors: bitvec![u64, Lsb0; 0; len * bits_per_color],
-            bits_per_color,
-        }
-    }
-
-    pub fn required_bit_width(n_colors: usize) -> usize {
-        log2_ceil(n_colors + 1) // +1 is for the special "none" value 
-    }
-
-    pub fn n_colors(&self) -> usize {
-        self.n_colors
-    }
-
-    pub fn substite_lca_for_s_mer_ranges<L: LcsAccess + Send + Sync>(&mut self, s: usize, hierarchy: &LcaTree, lcs: &L, n_threads: usize) {
+    fn substite_lca_for_s_mer_ranges<L: LcsAccess + Send + Sync>(&mut self, s: usize, hierarchy: &LcaTree, lcs: &L, n_threads: usize) {
         let n = self.len(); // Number of elements
         let n_bits = n * self.bits_per_color;
         let total_words = n_bits.next_multiple_of(64) / 64;
@@ -181,6 +140,48 @@ impl SimpleColorStorage {
         }
 
     }
+}
+
+impl SimpleColorStorage {
+
+    fn get_color_from_slice(slice: &BitSlice<u64, Lsb0>, bits_per_color: usize, colex: usize) -> Option<usize> {
+        let x: usize = slice[colex*bits_per_color .. (colex+1)*bits_per_color].load_le();
+        if x == (1 << bits_per_color) - 1 { // Max value is reserved for None
+            None
+        } else {
+            Some(x)
+        }
+    }
+
+    fn set_color_in_slice(slice: &mut BitSlice<u64, Lsb0>, bits_per_color: usize, colex: usize, value: Option<usize>) {
+        let x = match value {
+            None => (1 << bits_per_color) - 1,
+            Some(x) => {
+                assert!(x < (1 << bits_per_color) - 1);
+                x
+            }
+        };
+
+        slice[colex*bits_per_color .. (colex+1)*bits_per_color].store_le(x);
+    }
+
+    pub fn new(len: usize, n_colors: usize) -> Self {
+        let bits_per_color = Self::required_bit_width(n_colors);
+        SimpleColorStorage {
+            n_colors,
+            colors: bitvec![u64, Lsb0; 0; len * bits_per_color],
+            bits_per_color,
+        }
+    }
+
+    pub fn required_bit_width(n_colors: usize) -> usize {
+        log2_ceil(n_colors + 1) // +1 is for the special "none" value 
+    }
+
+    pub fn n_colors(&self) -> usize {
+        self.n_colors
+    }
+
 }
 
 fn log2_ceil(x: usize) -> usize {
