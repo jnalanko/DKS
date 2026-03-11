@@ -693,28 +693,6 @@ impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess + Sync +
         assert!(s <= inner.sbwt.k());
         let n = inner.sbwt.n_sets();
         inner.colors.substite_lca_for_s_mer_ranges(s, inner.hierarchy.tree(), &inner.lcs, n_threads);
-
-        // Sweep through every maximal run of positions whose consecutive LCS >= s
-        // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all
-        // colors in the run and write it back to every position in the run.
-        let mut run_start = 0usize;
-        for colex in 1..=n {
-            let run_continues = colex < n && inner.lcs.get_lcs(colex) >= s;
-            if !run_continues {
-                // Run is run_start..colex
-                if colex - run_start > 1 { // Avoid wasted work: only need to do LCA for runs longer than 1
-                    let mut merged: Option<usize> = None;
-                    for pos in run_start..colex {
-                        merged = inner.hierarchy.tree().lca_options(merged, inner.colors.get_color(pos));
-                    }
-                    for pos in run_start..colex {
-                        inner.colors.set_color(pos, merged);
-                    }
-                }
-                run_start = colex;
-            }
-        }
-
         Self { inner }
     }
 
