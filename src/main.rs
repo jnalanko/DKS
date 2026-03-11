@@ -353,7 +353,7 @@ fn run_queries<W: RunWriter>(n_threads: usize, reader: DynamicFastXReader, index
     let ColorIndex::FixedK(index) = index;
     if k < index.k() {
         log::info!("Preprocessing colors for {}-mer queries", k);
-        let s_index = SingleColoredKmersShort::new(index, k);
+        let s_index = SingleColoredKmersShort::new(index, k, n_threads);
         log::info!("Running {}-mer queries", k);
         parallel_queries::lookup_parallel(n_threads, reader, &s_index, batch_size, k, writer);
     } else {

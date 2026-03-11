@@ -686,12 +686,13 @@ pub struct SingleColoredKmersShort<L: ContractLeft + Clone + MySerialize + From<
     inner: SingleColoredKmers<L,C>, // k-mers sharing an s-mer have been made to have the same color: the LCA in the color hierarchy
 }
 
-impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmersShort<L,C> {
+impl<L: ContractLeft + Clone + MySerialize + From<LcsArray> + LcsAccess + Sync + Send, C: ColorStorage + Clone + MySerialize + From<SimpleColorStorage>> SingleColoredKmersShort<L,C> {
 
     // s is the query length. s <= k
-    pub fn new(mut inner: SingleColoredKmers<L, C>, s: usize) -> Self {
+    pub fn new(mut inner: SingleColoredKmers<L, C>, s: usize, n_threads: usize) -> Self {
         assert!(s <= inner.sbwt.k());
         let n = inner.sbwt.n_sets();
+        inner.colors.substite_lca_for_s_mer_ranges(s, inner.hierarchy.tree(), &inner.lcs, n_threads);
 
         // Sweep through every maximal run of positions whose consecutive LCS >= s
         // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all
@@ -800,7 +801,7 @@ mod tests {
             SingleColoredKmers::new(sbwt, lcs, streams, 1, hierarchy);
 
         // Sequential: SingleColoredKmersShort::new runs the reference algorithm
-        let sequential = SingleColoredKmersShort::new(index.clone(), s);
+        let sequential = SingleColoredKmersShort::new(index.clone(), s, todo!());
 
         // Parallel: run substite_lca_for_s_mer_ranges on the same initial color storage
         let (sbwt2, lcs2, mut colors2, hierarchy2) = index.into_parts();
