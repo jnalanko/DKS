@@ -1,6 +1,8 @@
 use crate::lca_tree::LcaTree;
 use crate::traits::*;
 use crate::wavelet_tree::WaveletTreeWrapper;
+use bitvec_sds::traits::RandomAccessU32;
+use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelIterator};
 use serde::{Serialize, Deserialize};
 use bitvec::prelude::*;
 use std::io::{Read, Write};
@@ -8,7 +10,7 @@ use std::ops::Range;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SimpleColorStorage {
-    colors: BitVec::<usize, Lsb0>,
+    colors: BitVec::<u64, Lsb0>,
     bits_per_color: usize,
     n_colors: usize, // Number of colors, not including the special "none" color.
 }
@@ -33,7 +35,7 @@ impl MySerialize for SimpleColorStorage {
     fn load(mut input: &mut impl Read) -> Box<Self> {
         let n_colors: usize = bincode::deserialize_from(&mut input).unwrap();
         let bits_per_color: usize = bincode::deserialize_from(&mut input).unwrap();
-        let colors: BitVec<usize, Lsb0> = bincode::deserialize_from(&mut input).unwrap();
+        let colors: BitVec<u64, Lsb0> = bincode::deserialize_from(&mut input).unwrap();
         Box::new(SimpleColorStorage { n_colors, colors, bits_per_color })
     }
 }
@@ -56,10 +58,10 @@ impl ColorStorage for SimpleColorStorage {
                 x
             }
         };
-        
+
         self.colors[colex*self.bits_per_color .. (colex+1)*self.bits_per_color].store_le(x);
     }
-    
+
     fn get_color_of_range(&self, range: Range<usize>, color_hierarchy: &LcaTree) -> Option<usize> {
         // This is O(|range| in the worst case)
 
@@ -94,7 +96,7 @@ impl SimpleColorStorage {
         let bits_per_color = Self::required_bit_width(n_colors);
         SimpleColorStorage {
             n_colors,
-            colors: bitvec![0; len * bits_per_color],
+            colors: bitvec![u64, Lsb0; 0; len * bits_per_color],
             bits_per_color,
         }
     }
@@ -105,6 +107,66 @@ impl SimpleColorStorage {
 
     pub fn n_colors(&self) -> usize {
         self.n_colors
+    }
+
+    pub fn substite_lca_for_s_mer_ranges<L: LcsAccess + Send + Sync>(&mut self, s: usize, hierarchy: &LcaTree, lcs: &L, n_threads: usize) {
+        let n = self.len(); // Number of elements
+        let n_bits = n * self.bits_per_color;
+        let total_words = n_bits.next_multiple_of(64);
+        let block_size_bits = n_bits.div_ceil(n_threads).next_multiple_of(64*self.bits_per_color);
+        let block_size_words = block_size_bits / 64;
+
+        let mut word_ranges = Vec::<Range<usize>>::new();
+        for b in 0..n_threads {
+            let start = b * block_size_words;
+            let end = ((b+1) * block_size_words).min(total_words);
+            word_ranges.push(start..end);
+        }
+        let raw_data = self.colors.as_raw_mut_slice();
+        assert!(raw_data.len() == total_words);
+        let mut color_slices = crate::util::split_to_mut_regions(raw_data, &word_ranges);
+
+        color_slices.iter_mut().enumerate().par_bridge().for_each(|(slice_idx, slice)| {
+            let bv = bitvec::slice::BitSlice::from_slice_mut(slice);
+            let n_elements = bv.len() / self.bits_per_color; 
+            let mut slice_storage = SimpleColorStorage {
+                colors: bv,
+                bits_per_color: self.bits_per_color,
+                n_colors: self.n_colors,
+            };
+
+            let start_element_colex = word_ranges[slice_idx].start * 64 / self.bits_per_color;
+
+            // Sweep through every maximal run of positions whose consecutive LCS >= s
+            // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all
+            // colors in the run and write it back to every position in the run.
+            let mut run_colex_start = start_element_colex;
+            for rel_element in 1..=n_elements {
+                let run_colex_end = start_element_colex + rel_element;
+                let run_continues = rel_element < n_elements && lcs.get_lcs(run_colex_end) >= s;
+                if !run_continues {
+                    // Run is run_colex_start..run_colex_end
+                    if run_colex_end - run_colex_start > 1 { // Avoid wasted work: only need to do LCA for runs longer than 1
+                        let mut merged: Option<usize> = None;
+                        for colex_pos in run_colex_start..run_colex_end {
+                            let rel_colex_pos = colex_pos - start_element_colex;
+                            merged = hierarchy.lca_options(merged, slice_storage.get_color(rel_colex_pos));
+                        }
+
+                        // Write back
+                        for colex_pos in run_colex_start..run_colex_end {
+                            let rel_colex_pos = colex_pos - start_element_colex;
+                            slice_storage.set_color(rel_colex_pos, merged);
+                        }
+                    }
+                    run_colex_start = run_colex_end;
+                }
+            }
+        });
+
+        // TODO: finish the ranges crossing split points
+        todo!();
+
     }
 }
 

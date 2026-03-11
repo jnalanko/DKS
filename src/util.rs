@@ -55,3 +55,34 @@ pub fn for_each_run_with_key<T: Eq, KeyType: Eq, F1: Fn(&T) -> KeyType, F2: FnMu
     // Final run
     callback(run_start..n);
 }
+
+/// Returns a mutable slice for every region in `regions`.
+///
+/// ## Preconditions  (guaranteed by the caller)
+/// * All ranges are inside `0..v.len()`.
+/// * The ranges are sorted by `start` and do **not** overlap.
+pub(crate) fn split_to_mut_regions<'a>(
+    v: &'a mut [u64],
+    regions: &[Range<usize>],
+) -> Vec<&'a mut [u64]> {
+    let mut result = Vec::with_capacity(regions.len());
+    let mut tail: &mut [u64] = v;
+    let mut consumed = 0; // absolute index we have reached in `v`
+
+    for r in regions {
+        // translate the absolute `start` to an index inside `tail`
+        let rel_start = r.start - consumed;
+        let len       = r.end   - r.start;
+
+        // First split off everything before the wanted region …
+        let (_, after_start)    = tail.split_at_mut(rel_start);
+        // ... then split that remainder into the desired region and the rest.
+        let (region, after_end) = after_start.split_at_mut(len);
+
+        result.push(region); // keep the region
+        tail = after_end; // keep working with the suffix
+        consumed = r.end; // advance the absolute cursor
+    }
+
+    result
+}
