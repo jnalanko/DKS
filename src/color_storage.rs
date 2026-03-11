@@ -124,9 +124,22 @@ impl SimpleColorStorage {
         assert!(raw_data.len() == total_words);
         let mut color_slices = crate::util::split_to_mut_regions(raw_data, &word_ranges);
 
+        // Compute and fill in the LCA of all colors in the given colex range,
+        // addressed relative to start_element_colex within bv.
+        let fill_lca_range = |bv: &mut BitSlice<u64, Lsb0>, bits_per_color: usize, start_element_colex: usize, run: Range<usize>| {
+            let mut combined: Option<usize> = None;
+            for colex in run.clone() {
+                let color = SimpleColorStorage::get_color_from_slice(bv, bits_per_color, colex - start_element_colex);
+                combined = hierarchy.lca_options(combined, color);
+            }
+            for colex in run {
+                SimpleColorStorage::set_color_in_slice(bv, bits_per_color, colex - start_element_colex, combined);
+            }
+        };
+
         color_slices.iter_mut().enumerate().par_bridge().for_each(|(slice_idx, slice)| {
             let bv = bitvec::slice::BitSlice::from_slice_mut(slice);
-            let n_elements = bv.len() / self.bits_per_color; 
+            let n_elements = bv.len() / self.bits_per_color;
 
             let start_element_colex = word_ranges[slice_idx].start * 64 / self.bits_per_color;
 
@@ -138,28 +151,43 @@ impl SimpleColorStorage {
                 let run_colex_end = start_element_colex + rel_element;
                 let run_continues = rel_element < n_elements && lcs.get_lcs(run_colex_end) >= s;
                 if !run_continues {
-                    // Run is run_colex_start..run_colex_end
                     if run_colex_end - run_colex_start > 1 { // Avoid wasted work: only need to do LCA for runs longer than 1
-                        let mut combined: Option<usize> = None;
-                        for colex_pos in run_colex_start..run_colex_end {
-                            let rel_colex_pos = colex_pos - start_element_colex;
-                            let color = SimpleColorStorage::get_color_from_slice(bv, self.bits_per_color, rel_colex_pos);
-                            combined = hierarchy.lca_options(combined, color);
-                        }
-
-                        // Write back
-                        for colex_pos in run_colex_start..run_colex_end {
-                            let rel_colex_pos = colex_pos - start_element_colex;
-                            SimpleColorStorage::set_color_in_slice(bv, self.bits_per_color, rel_colex_pos, combined);
-                        }
+                        fill_lca_range(bv, self.bits_per_color, start_element_colex, run_colex_start..run_colex_end);
                     }
                     run_colex_start = run_colex_end;
                 }
             }
         });
 
-        // TODO: finish the ranges crossing split points
-        todo!();
+        // Handle runs that cross block split points sequentially.
+        // The parallel phase wrote partial LCAs on each side; since LCA is associative
+        // we can re-read those values, find the full run extent, and merge.
+        let bv = BitSlice::from_slice_mut(self.colors.as_raw_mut_slice());
+        let mut b = 1;
+        while b < n_threads {
+            let boundary = word_ranges[b].start * 64 / self.bits_per_color;
+            if boundary >= n || lcs.get_lcs(boundary) < s {
+                b += 1;
+                continue;
+            }
+
+            // Find full extent of the cross-boundary run
+            let mut run_start = boundary - 1;
+            while run_start > 0 && lcs.get_lcs(run_start) >= s {
+                run_start -= 1;
+            }
+            let mut run_end = boundary;
+            while run_end < n && lcs.get_lcs(run_end) >= s {
+                run_end += 1;
+            }
+
+            fill_lca_range(bv, self.bits_per_color, 0, run_start..run_end);
+
+            // Skip over all boundaries that fall inside this run
+            while b < n_threads && word_ranges[b].start * 64 / self.bits_per_color < run_end {
+                b += 1;
+            }
+        }
 
     }
 }
@@ -189,6 +217,5 @@ mod tests {
         assert_eq!(log2_ceil(6), 3);
         assert_eq!(log2_ceil(7), 3);
         assert_eq!(log2_ceil(8), 3);
-
     }
 }
