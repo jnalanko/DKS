@@ -127,11 +127,6 @@ impl SimpleColorStorage {
         color_slices.iter_mut().enumerate().par_bridge().for_each(|(slice_idx, slice)| {
             let bv = bitvec::slice::BitSlice::from_slice_mut(slice);
             let n_elements = bv.len() / self.bits_per_color; 
-            let mut slice_storage = SimpleColorStorage {
-                colors: bv,
-                bits_per_color: self.bits_per_color,
-                n_colors: self.n_colors,
-            };
 
             let start_element_colex = word_ranges[slice_idx].start * 64 / self.bits_per_color;
 
@@ -145,16 +140,17 @@ impl SimpleColorStorage {
                 if !run_continues {
                     // Run is run_colex_start..run_colex_end
                     if run_colex_end - run_colex_start > 1 { // Avoid wasted work: only need to do LCA for runs longer than 1
-                        let mut merged: Option<usize> = None;
+                        let mut combined: Option<usize> = None;
                         for colex_pos in run_colex_start..run_colex_end {
                             let rel_colex_pos = colex_pos - start_element_colex;
-                            merged = hierarchy.lca_options(merged, slice_storage.get_color(rel_colex_pos));
+                            let color = SimpleColorStorage::get_color_from_slice(bv, self.bits_per_color, rel_colex_pos);
+                            combined = hierarchy.lca_options(combined, color);
                         }
 
                         // Write back
                         for colex_pos in run_colex_start..run_colex_end {
                             let rel_colex_pos = colex_pos - start_element_colex;
-                            slice_storage.set_color(rel_colex_pos, merged);
+                            SimpleColorStorage::set_color_in_slice(bv, self.bits_per_color, rel_colex_pos, combined);
                         }
                     }
                     run_colex_start = run_colex_end;
