@@ -116,7 +116,8 @@ impl SimpleColorStorage {
 
         let mut word_ranges = Vec::<Range<usize>>::new();
         for b in 0..n_threads {
-            let start = (b * block_size_words).min(total_words);
+            let start = b * block_size_words;
+            if start >= total_words { break; }
             let end = ((b+1) * block_size_words).min(total_words);
             word_ranges.push(start..end);
         }
@@ -140,9 +141,8 @@ impl SimpleColorStorage {
         color_slices.iter_mut().enumerate().par_bridge().for_each(|(slice_idx, slice)| {
             let bv = bitvec::slice::BitSlice::from_slice_mut(slice);
             let start_element_colex = word_ranges[slice_idx].start * 64 / self.bits_per_color;
-            // The last block may be padded to a full word, and empty blocks (when n_threads > n_words)
-            // have start_element_colex >= n, so cap with saturating subtraction.
-            let n_elements = (bv.len() / self.bits_per_color).min(n.saturating_sub(start_element_colex));
+            // The last block may be padded to a full word, so cap at the true element count.
+            let n_elements = (bv.len() / self.bits_per_color).min(n - start_element_colex);
 
             // Sweep through every maximal run of positions whose consecutive LCS >= s
             // (i.e. all k-mers in the run share a common s-mer). Compute the LCA of all
@@ -165,7 +165,7 @@ impl SimpleColorStorage {
         // we can re-read those values, find the full run extent, and merge.
         let bv = BitSlice::from_slice_mut(self.colors.as_raw_mut_slice());
         let mut b = 1;
-        while b < n_threads {
+        while b < word_ranges.len() {
             let boundary = word_ranges[b].start * 64 / self.bits_per_color;
             if boundary >= n || lcs.get_lcs(boundary) < s {
                 b += 1;
@@ -185,7 +185,7 @@ impl SimpleColorStorage {
             fill_lca_range(bv, self.bits_per_color, 0, run_start..run_end);
 
             // Skip over all boundaries that fall inside this run
-            while b < n_threads && word_ranges[b].start * 64 / self.bits_per_color < run_end {
+            while b < word_ranges.len() && word_ranges[b].start * 64 / self.bits_per_color < run_end {
                 b += 1;
             }
         }
