@@ -781,25 +781,20 @@ mod tests {
     use super::*;
     use crate::color_storage::SimpleColorStorage;
 
-    #[test]
-    fn test_parallel_substitute_lca_agrees_with_sequential() {
-        let k = 4_usize;
-        let s = 3_usize;
-
-        // Two colors, two sequences
-        let seqs: &[&[u8]] = &[b"ACGTACGT", b"TGCATGCA"];
+    fn run_parallel_vs_sequential(seqs: &[Vec<u8>], k: usize, s: usize, n_threads: usize) {
+        let slices: Vec<&[u8]> = seqs.iter().map(|v| v.as_slice()).collect();
         let (sbwt, lcs) = sbwt::SbwtIndexBuilder::<sbwt::BitPackedKmerSortingMem>::new()
             .k(k)
             .build_lcs(true)
-            .run(sbwt::SliceSeqStream::new(seqs));
+            .run(sbwt::SliceSeqStream::new(&slices));
         let lcs = lcs.unwrap();
 
-        let hierarchy = ColorHierarchy::new_star(vec!["a".to_string(), "b".to_string()]);
+        let color_names = (0..seqs.len()).map(|i| format!("color{i}")).collect();
+        let hierarchy = ColorHierarchy::new_star(color_names);
 
-        let streams: Vec<sbwt::SliceSeqStream> = vec![
-            sbwt::SliceSeqStream::new(&seqs[..1]),
-            sbwt::SliceSeqStream::new(&seqs[1..]),
-        ];
+        let streams: Vec<sbwt::VecSeqStream> = seqs.iter()
+            .map(|seq| sbwt::VecSeqStream::new(std::slice::from_ref(seq)))
+            .collect();
 
         let index: SingleColoredKmers<LcsWrapper, SimpleColorStorage> =
             SingleColoredKmers::new(sbwt, lcs, streams, 1, hierarchy);
@@ -807,10 +802,10 @@ mod tests {
         // Sequential: SingleColoredKmersShort::new runs the reference algorithm
         let sequential = SingleColoredKmersShort::new(index.clone(), s);
 
-        // Parallel: run substite_lca_for_s_mer_ranges on a fresh copy's color storage
+        // Parallel: run substite_lca_for_s_mer_ranges on the same initial color storage
         let (sbwt2, lcs2, mut colors2, hierarchy2) = index.into_parts();
         let lcs_wrapper = LcsWrapper::from(lcs2);
-        colors2.substite_lca_for_s_mer_ranges(s, hierarchy2.tree(), &lcs_wrapper, 4);
+        colors2.substite_lca_for_s_mer_ranges(s, hierarchy2.tree(), &lcs_wrapper, n_threads);
 
         let n = sbwt2.n_sets();
         for i in 0..n {
@@ -819,6 +814,30 @@ mod tests {
                 "mismatch at colex {i}"
             );
         }
+    }
+
+    #[test]
+    fn test_parallel_substitute_lca_small() {
+        run_parallel_vs_sequential(
+            &[b"ACGTACGT".to_vec(), b"TGCATGCA".to_vec()],
+            4, 3, 4,
+        );
+    }
+
+    #[test]
+    fn test_parallel_substitute_lca_large() {
+        // Generate two 10k pseudorandom DNA sequences
+        let bases = b"ACGT";
+        let mut seq_a = Vec::with_capacity(10_000);
+        let mut seq_b = Vec::with_capacity(10_000);
+        let mut state = 12345_u64;
+        for _ in 0..10_000 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seq_a.push(bases[((state >> 33) & 3) as usize]);
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            seq_b.push(bases[((state >> 33) & 3) as usize]);
+        }
+        run_parallel_vs_sequential(&[seq_a, seq_b], 15, 10, 8);
     }
 }
 
