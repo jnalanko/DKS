@@ -782,6 +782,26 @@ mod tests {
     use super::*;
     use crate::color_storage::SimpleColorStorage;
 
+    fn sequential_substitute(colors: &mut SimpleColorStorage, s: usize, hierarchy: &LcaTree, lcs: &LcsWrapper) {
+        let n = colors.len();
+        let mut run_start = 0usize;
+        for colex in 1..=n {
+            let run_continues = colex < n && lcs.get_lcs(colex) >= s;
+            if !run_continues {
+                if colex - run_start > 1 {
+                    let mut merged: Option<usize> = None;
+                    for pos in run_start..colex {
+                        merged = hierarchy.lca_options(merged, colors.get_color(pos));
+                    }
+                    for pos in run_start..colex {
+                        colors.set_color(pos, merged);
+                    }
+                }
+                run_start = colex;
+            }
+        }
+    }
+
     fn run_parallel_vs_sequential(seqs: &[Vec<u8>], k: usize, s: usize, n_threads: usize) {
         let slices: Vec<&[u8]> = seqs.iter().map(|v| v.as_slice()).collect();
         let (sbwt, lcs) = sbwt::SbwtIndexBuilder::<sbwt::BitPackedKmerSortingMem>::new()
@@ -800,8 +820,10 @@ mod tests {
         let index: SingleColoredKmers<LcsWrapper, SimpleColorStorage> =
             SingleColoredKmers::new(sbwt, lcs, streams, 1, hierarchy);
 
-        // Sequential: SingleColoredKmersShort::new runs the reference algorithm
-        let sequential = SingleColoredKmersShort::new(index.clone(), s, todo!());
+        // Sequential reference: run the simple single-threaded loop
+        let (_, lcs_seq, mut colors_seq, hierarchy_seq) = index.clone().into_parts();
+        let lcs_wrapper_seq = LcsWrapper::from(lcs_seq);
+        sequential_substitute(&mut colors_seq, s, hierarchy_seq.tree(), &lcs_wrapper_seq);
 
         // Parallel: run substite_lca_for_s_mer_ranges on the same initial color storage
         let (sbwt2, lcs2, mut colors2, hierarchy2) = index.into_parts();
@@ -811,7 +833,7 @@ mod tests {
         let n = sbwt2.n_sets();
         for i in 0..n {
             assert_eq!(
-                sequential.inner().get_color(i), colors2.get_color(i),
+                colors_seq.get_color(i), colors2.get_color(i),
                 "mismatch at colex {i}"
             );
         }
