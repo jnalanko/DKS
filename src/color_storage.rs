@@ -162,7 +162,7 @@ impl SimpleColorStorage {
 
         // Handle runs that cross block split points sequentially.
         // The parallel phase wrote partial LCAs on each side; since LCA is associative
-        // we can re-read those values, find the full run extent, and merge.
+        // we can re-read those values, find the full run extent, take the LCAs, and write back.
         let bv = BitSlice::from_slice_mut(self.colors.as_raw_mut_slice());
         for word_range in word_ranges {
             let start_element = word_range.start * 64 / self.bits_per_color;
